@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openapi-mocker-config
+  namespace: openapi-mocker
+data:
+  PORT: "8080"
+  DATA_DIR: "/data"

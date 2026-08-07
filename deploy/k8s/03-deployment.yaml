@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openapi-mocker
+  namespace: openapi-mocker
+  labels:
+    app: openapi-mocker
+spec:
+  # IMPORTANT: the default storage is a JSON file on disk (see internal/store).
+  # It is NOT designed for multiple replicas writing simultaneously.
+  # Keep replicas: 1, or replace Store with a DB-backed implementation
+  # (Postgres/MySQL) before scaling horizontally.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: openapi-mocker
+  template:
+    metadata:
+      labels:
+        app: openapi-mocker
+    spec:
+      containers:
+        - name: openapi-mocker
+          image: openapi-mocker:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+          envFrom:
+            - configMapRef:
+                name: openapi-mocker-config
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 20
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: openapi-mocker-data
