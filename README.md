@@ -6,82 +6,6 @@ LLM-generated mock data, built-in web UI, and Go server/client code generation.
 Builds into a single binary / single Docker image and runs equally well on a
 desktop, in Docker, and in Kubernetes.
 
-## Architecture
-
-Built on **Clean Architecture** (Entities → Use Cases → Interface
-Adapters → Frameworks & Drivers) with explicit dependency inversion: inner
-layers declare interfaces (ports), outer layers implement them. Imports always
-point inward: `domain ← usecase ← adapter ← main`. Neither `domain` nor
-`usecase` imports `net/http`, `kin-openapi`, or anything about JSON storage
-directly.
-
-```
-internal/
-  domain/               Entities: pure business objects (Project, Contract,
-                          MockRule, LLMProvider, RequestLog) + domain errors.
-                          Zero dependencies, stdlib only.
-
-  usecase/                Use Cases: business rules + ports (interfaces)
-                          that the usecase layer needs from the outside world,
-                          without knowing how they are implemented:
-    ports.go                 ProjectRepository, ContractRepository,
-                            MockRepository, ProviderRepository,
-                            LogRepository, ContractEngine, LLMGateway,
-                            CodeGenerator
-    project_service.go       Project CRUD
-    contract_service.go      publishing a contract (= live immediately),
-                            versions, diff, rollback, generation via LLM
-    mock_service.go          Mock rule CRUD, body generation via LLM
-    provider_service.go      LLM provider CRUD, connection test
-    mockserving_service.go   product core: builds a MockResponse from a
-                            request (contract → mock rule → fallback to schema
-                            example), without touching net/http
-    codegen_service.go       server/client code generation
-    log_service.go           request log
-
-  adapter/                Interface Adapters: implementations of the usecase-
-                            layer ports. Each package knows about a specific
-                            library/protocol and does not let its types leak:
-    repository/jsonstore/    all 5 repositories backed by a single JSON file
-    openapi/                 ContractEngine on top of kin-openapi
-    llm/                     LLMGateway: OpenAI-compatible APIs, Anthropic,
-                            Google Gemini, custom HTTP provider
-    codegen/                 CodeGenerator: Go server/client generation
-    httpapi/                 HTTP controllers + routing (net/http, Go 1.22
-                            ServeMux) - the only package (besides cmd/ and
-                            webui/) that knows about net/http
-    webui/                   embed.FS with static SPA assets (UI delivery)
-
-cmd/server/main.go       Composition root: the only place where concrete
-                          adapters are injected into usecase-service constructors
-                          via interfaces. Want Postgres instead of a store or
-                          a new LLM protocol? Edit only here and in the
-                          corresponding internal/adapter/*; usecase/domain stays
-                          untouched.
-
-deploy/                   Dockerfile, docker-compose.yml, Kubernetes manifests
-```
-
-Boundary enforcement is easy to verify in practice: `internal/adapter/repository/jsonstore/store.go`
-contains `var _ usecase.ProjectRepository = (*Store)(nil)` and equivalents for
-the other 4 ports at the top of the file. Package compilation will fail if
-`Store` stops implementing any of them. Same assertions exist for
-`openapi.Engine` (ContractEngine), `llm.Gateway` (LLMGateway), and
-`codegen.Generator` (CodeGenerator) - these implementations are never imported
-from `internal/usecase`.
-
-Two deliberate pragmatic compromises (without them, a Go adaptation of Clean
-Architecture quickly drowns in boilerplate):
-
-- **Domain entities carry json tags** (`internal/domain/*.go`). Formally this is
-  a serialization detail, but `encoding/json` is part of the standard library
-  rather than a swappable framework, so this is a dependency the domain has on
-  no particular transport. HTTP controllers serialize domain structs directly
-  instead of maintaining a separate DTO layer with manual field-by-field mapping.
-- **`ContractEngine` re-parses the contract on every call** instead of caching
-  `*openapi3.T`. For typical OpenAPI file sizes this is negligible and greatly
-  simplifies cache invalidation when a new version is published.
-
 ## Features
 
 1. Runs on desktop (`go run`/binary), in Docker, in Kubernetes.
@@ -196,13 +120,3 @@ curl -H "X-Mock-Scenario: error" http://localhost:8080/mock/<projectId>/users/1
 - LLM provider API keys are stored in the data file in plaintext — for
   production, encrypt them at rest or feed them in through a Kubernetes
   Secret and a separate protected endpoint.
-
-## Development
-
-```bash
-go build ./...      # build everything
-go vet ./...         # static analysis
-go test ./...         # no tests yet — usecase layer is isolated by interfaces,
-                       # which is exactly why they are easy to add: mocks for
-                       # ProjectRepository/ContractEngine/... are simple stubs
-                       # of 10-15 lines, no testcontainers/httptest needed.
