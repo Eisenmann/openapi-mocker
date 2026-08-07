@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>OpenAPI Mocker</title>
+<link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+<div id="app">
+  <aside class="sidebar">
+    <div class="brand">🧩 OpenAPI Mocker</div>
+    <button id="btnNewProject" class="btn btn-primary">+ New Project</button>
+    <div id="projectList" class="project-list"></div>
+  </aside>
+  <main class="content" id="content">
+    <div class="empty-state">
+      <h2>Select or create a project</h2>
+      <p>A project = one OpenAPI contract + a set of mock rules served at <code>/mock/<projectId>/...</code></p>
+    </div>
+  </main>
+</div>
+
+<div id="modalRoot"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: openapi-mocker
+  namespace: openapi-mocker
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    # LLM generation and delayed mocks can take a long time —
+    # increase timeouts at the ingress-controller level.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "180"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "180"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: openapi-mocker.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: openapi-mocker
+                port:
+                  number: 80
+  # tls:
+  #   - hosts: ["openapi-mocker.example.com"]
+  #     secretName: openapi-mocker-tls

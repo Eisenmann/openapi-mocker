@@ -1,0 +1,4 @@
+data/
+*.md
+.git/
+deploy/k8s/
