@@ -14,10 +14,13 @@ func extractJSON(raw string) string {
 		s = strings.TrimSuffix(s, "```")
 		s = strings.TrimSpace(s)
 	}
+
 	start := strings.IndexAny(s, "{[")
+
 	end := strings.LastIndexAny(s, "}]")
 	if start >= 0 && end > start {
 		return s[start : end+1]
 	}
+
 	return s
 }

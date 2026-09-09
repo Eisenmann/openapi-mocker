@@ -18,12 +18,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/example/openapi-mocker/internal/adapter/codegen"
-	"github.com/example/openapi-mocker/internal/adapter/httpapi"
-	"github.com/example/openapi-mocker/internal/adapter/llm"
-	"github.com/example/openapi-mocker/internal/adapter/openapi"
-	"github.com/example/openapi-mocker/internal/adapter/repository/jsonstore"
-	"github.com/example/openapi-mocker/internal/usecase"
+	"github.com/Eisenmann/openapi-mocker/internal/adapter/codegen"
+	"github.com/Eisenmann/openapi-mocker/internal/adapter/graphql"
+	"github.com/Eisenmann/openapi-mocker/internal/adapter/httpapi"
+	"github.com/Eisenmann/openapi-mocker/internal/adapter/llm"
+	"github.com/Eisenmann/openapi-mocker/internal/adapter/openapi"
+	"github.com/Eisenmann/openapi-mocker/internal/adapter/repository/jsonstore"
+	"github.com/Eisenmann/openapi-mocker/internal/usecase"
 )
 
 func main() {
@@ -38,16 +39,18 @@ func main() {
 	contractEngine := openapi.NewEngine()   // implements usecase.ContractEngine.
 	llmGateway := llm.NewGateway()          // implements usecase.LLMGateway.
 	codeGenerator := codegen.NewGenerator() // implements usecase.CodeGenerator.
+	graphQLEngine := graphql.NewEngine()    // implements usecase.GraphQLEngine.
 
 	// ---- Use Cases: assembled from ports, know nothing about concrete adapters ----.
 	services := httpapi.Services{
-		Projects:    usecase.NewProjectService(store),
-		Contracts:   usecase.NewContractService(store, store, contractEngine, llmGateway),
-		Mocks:       usecase.NewMockService(store, store, store, contractEngine, llmGateway),
-		Providers:   usecase.NewProviderService(store, llmGateway),
-		MockServing: usecase.NewMockServingService(store, store, store, contractEngine),
-		Codegen:     usecase.NewCodegenService(store, codeGenerator),
-		Logs:        usecase.NewLogService(store),
+		Projects:       usecase.NewProjectService(store),
+		Contracts:      usecase.NewContractService(store, store, contractEngine, llmGateway),
+		Mocks:          usecase.NewMockService(store, store, store, contractEngine, llmGateway),
+		Providers:      usecase.NewProviderService(store, llmGateway),
+		MockServing:    usecase.NewMockServingService(store, store, store, contractEngine),
+		GraphQLServing: usecase.NewGraphQLServingService(store, store, graphQLEngine),
+		Codegen:        usecase.NewCodegenService(store, codeGenerator),
+		Logs:           usecase.NewLogService(store),
 	}
 
 	// ---- Interface Adapter: HTTP controllers + routing ----.

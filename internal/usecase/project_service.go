@@ -1,10 +1,9 @@
 package usecase
 
 import (
-	"errors"
 	"strings"
 
-	"github.com/example/openapi-mocker/internal/domain"
+	"github.com/Eisenmann/openapi-mocker/internal/domain"
 )
 
 type ProjectService struct {
@@ -17,8 +16,9 @@ func NewProjectService(repo ProjectRepository) *ProjectService {
 
 func (s *ProjectService) Create(name, description string) (*domain.Project, error) {
 	if strings.TrimSpace(name) == "" {
-		return nil, errors.New("project name is required")
+		return nil, ErrProjectNameRequired
 	}
+
 	return s.repo.Create(name, description), nil
 }
 

@@ -17,7 +17,7 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 
-	"github.com/example/openapi-mocker/internal/usecase"
+	"github.com/Eisenmann/openapi-mocker/internal/usecase"
 )
 
 type Generator struct{}

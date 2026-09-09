@@ -30,8 +30,19 @@ desktop, in Docker, and in Kubernetes.
 7. OpenAPI contract generation from a text description via LLM + validation
    (including targeted validation of the mock body against the contract's
    response schema).
-8. Go server and Go client code generation in one click (download as zip).
-9. Additional features:
+8. **GraphQL contracts**: publish an SDL document instead of OpenAPI; the mock
+   server then serves the GraphQL schema with validation of queries against it
+   (per the GraphQL spec — aliases, fragments, inline fragments, arguments and
+   variables, including `__typename`), SDL export via
+   `GET /api/projects/{id}/graphql/schema`, and automatic mock response
+   generation shaped by the selection set. Subscriptions are answered as
+   one-shot queries (a reasonable mock simplification). Note: the mock engine
+   does **not** implement the GraphQL introspection system (`__schema`/`__type`);
+   introspection queries return a clear error pointing at the SDL export
+   endpoint. List fields honor a `limit` argument (clamped to a maximum of 20
+   items); without one, a small default of 2 items is returned.
+9. Go server and Go client code generation in one click (download as zip).
+10. Additional features:
    - **Response scenarios** (`X-Mock-Scenario`) — multiple response variants
      for one endpoint (happy path, empty, error…), selected by a header.
    - **Delay simulation and chaos error injection** (`delayMs`,
@@ -81,14 +92,17 @@ kubectl -n openapi-mocker port-forward svc/openapi-mocker 8080:80
 |---|---|
 | `GET/POST /api/projects` | list / create project |
 | `GET/DELETE /api/projects/{id}` | project |
-| `GET/POST /api/projects/{id}/contract` | get / publish active contract |
+| `GET/POST /api/projects/{id}/contract` | get / publish active contract (JSON body may include `format`: `graphql`/`yaml`/`json`; auto-detected when omitted) |
 | `GET /api/projects/{id}/contract/versions` | version history |
 | `GET /api/projects/{id}/contract/versions/{version}` | contents of a specific version |
 | `POST /api/projects/{id}/contract/versions/{version}/rollback` | roll back to a version (re-publishes it) |
 | `GET /api/projects/{id}/contract/diff?from=X&to=Y` | line-by-line diff of two versions (to defaults to current) |
-| `POST /api/projects/{id}/contract/validate` | validate contract |
+| `POST /api/projects/{id}/contract/validate` | validate contract (OpenAPI or GraphQL) |
 | `POST /api/projects/{id}/contract/generate` | generate contract via LLM |
-| `GET /api/projects/{id}/endpoints` | list contract operations |
+| `GET /api/projects/{id}/endpoints` | list contract operations (HTTP endpoints or GraphQL fields) |
+| `GET /api/projects/{id}/graphql/schema` | SDL export of the published GraphQL contract |
+| `GET /api/projects/{id}/graphql/operations` | GraphQL root fields (query/mutation/subscription) |
+| `POST /mock/{id}/graphql` | execute a GraphQL query (JSON body, gets mock data) |
 | `GET/POST /api/projects/{id}/mocks` | list / create mock rules |
 | `PUT/DELETE /api/mocks/{mockId}` | edit / delete a mock rule |
 | `POST /api/projects/{id}/mocks/generate` | generate mock body via LLM |

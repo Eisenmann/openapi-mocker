@@ -1,6 +1,6 @@
 package usecase
 
-import "github.com/example/openapi-mocker/internal/domain"
+import "github.com/Eisenmann/openapi-mocker/internal/domain"
 
 type LogService struct {
 	repo LogRepository

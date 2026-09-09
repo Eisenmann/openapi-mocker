@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/example/openapi-mocker/internal/domain"
+	"github.com/Eisenmann/openapi-mocker/internal/domain"
 )
 
 // MockServingService is the central business scenario of the application:

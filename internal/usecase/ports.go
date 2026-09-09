@@ -11,7 +11,7 @@ package usecase
 import (
 	"context"
 
-	"github.com/example/openapi-mocker/internal/domain"
+	"github.com/Eisenmann/openapi-mocker/internal/domain"
 )
 
 // ---------- Repositories (persistence ports) ----------.

@@ -18,9 +18,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/example/openapi-mocker/internal/domain"
-	"github.com/example/openapi-mocker/internal/idgen"
-	"github.com/example/openapi-mocker/internal/usecase"
+	"github.com/Eisenmann/openapi-mocker/internal/domain"
+	"github.com/Eisenmann/openapi-mocker/internal/idgen"
+	"github.com/Eisenmann/openapi-mocker/internal/usecase"
 )
 
 // The compiler checks right here and now that Store implements all 5 ports

@@ -10,20 +10,21 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/example/openapi-mocker/internal/domain"
-	"github.com/example/openapi-mocker/internal/usecase"
+	"github.com/Eisenmann/openapi-mocker/internal/domain"
+	"github.com/Eisenmann/openapi-mocker/internal/usecase"
 )
 
 // Services is all the usecase services needed by the HTTP layer. They are
 // assembled in the composition root (cmd/server/main.go) from concrete adapters.
 type Services struct {
-	Projects    *usecase.ProjectService
-	Contracts   *usecase.ContractService
-	Mocks       *usecase.MockService
-	Providers   *usecase.ProviderService
-	MockServing *usecase.MockServingService
-	Codegen     *usecase.CodegenService
-	Logs        *usecase.LogService
+	Projects       *usecase.ProjectService
+	Contracts      *usecase.ContractService
+	Mocks          *usecase.MockService
+	Providers      *usecase.ProviderService
+	MockServing    *usecase.MockServingService
+	GraphQLServing *usecase.GraphQLServingService
+	Codegen        *usecase.CodegenService
+	Logs           *usecase.LogService
 }
 
 type api struct {
@@ -53,7 +54,7 @@ func writeError(w http.ResponseWriter, defaultStatus int, err error) {
 	writeJSON(w, status, map[string]string{"error": err.Error()})
 }
 
-func readJSON(r *http.Request, v interface{}) error {
+func readJSON(w http.ResponseWriter, r *http.Request, v interface{}) error {
 	defer r.Body.Close()
 	return json.NewDecoder(r.Body).Decode(v)
 }

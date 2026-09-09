@@ -3,7 +3,7 @@ package openapi
 import (
 	"strings"
 
-	"github.com/example/openapi-mocker/internal/usecase"
+	"github.com/Eisenmann/openapi-mocker/internal/usecase"
 )
 
 // maxDiffCells limits the size of the LCS table (O(n*m) in memory/time),
@@ -13,16 +13,24 @@ const maxDiffCells = 4_000_000
 func diffLines(a, b string) []usecase.DiffLine {
 	al := splitLines(a)
 	bl := splitLines(b)
-	n, m := len(al), len(bl)
 
-	if n*m > maxDiffCells {
+	if len(al)*len(bl) > maxDiffCells {
 		return coarseDiff(al, bl)
 	}
+
+	return backtrackLCS(al, bl, lcsTable(al, bl))
+}
+
+// lcsTable builds the classic longest-common-subsequence dynamic-programming
+// table for the two line slices.
+func lcsTable(al, bl []string) [][]int {
+	n, m := len(al), len(bl)
 
 	dp := make([][]int, n+1)
 	for i := range dp {
 		dp[i] = make([]int, m+1)
 	}
+
 	for i := n - 1; i >= 0; i-- {
 		for j := m - 1; j >= 0; j-- {
 			switch {
@@ -36,7 +44,15 @@ func diffLines(a, b string) []usecase.DiffLine {
 		}
 	}
 
+	return dp
+}
+
+// backtrackLCS walks the LCS table and emits the diff lines: shared lines as
+// DiffSame, leading/trailing leftovers as DiffRemoved/DiffAdded.
+func backtrackLCS(al, bl []string, dp [][]int) []usecase.DiffLine {
+	n, m := len(al), len(bl)
 	out := make([]usecase.DiffLine, 0, n+m)
+
 	i, j := 0, 0
 	for i < n && j < m {
 		switch {
@@ -52,12 +68,15 @@ func diffLines(a, b string) []usecase.DiffLine {
 			j++
 		}
 	}
+
 	for ; i < n; i++ {
 		out = append(out, usecase.DiffLine{Type: usecase.DiffRemoved, Text: al[i]})
 	}
+
 	for ; j < m; j++ {
 		out = append(out, usecase.DiffLine{Type: usecase.DiffAdded, Text: bl[j]})
 	}
+
 	return out
 }
 
@@ -66,9 +85,11 @@ func coarseDiff(al, bl []string) []usecase.DiffLine {
 	for _, l := range al {
 		out = append(out, usecase.DiffLine{Type: usecase.DiffRemoved, Text: l})
 	}
+
 	for _, l := range bl {
 		out = append(out, usecase.DiffLine{Type: usecase.DiffAdded, Text: l})
 	}
+
 	return out
 }
 
@@ -77,5 +98,6 @@ func splitLines(s string) []string {
 	if s == "" {
 		return []string{}
 	}
+
 	return strings.Split(s, "\n")
 }
