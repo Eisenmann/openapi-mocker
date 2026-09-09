@@ -61,7 +61,7 @@ func (a *api) saveContract(w http.ResponseWriter, r *http.Request) {
 		raw, source = string(b), "upload"
 	} else {
 		var body struct{ Raw, Source string }
-		if err := readJSON(r, &body); err != nil {
+		if err := readJSON(w, r, &body); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
@@ -115,7 +115,7 @@ func (a *api) diffContract(w http.ResponseWriter, r *http.Request) {
 
 func (a *api) validateContract(w http.ResponseWriter, r *http.Request) {
 	var body struct{ Raw string }
-	if err := readJSON(r, &body); err != nil {
+	if err := readJSON(w, r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
@@ -136,7 +136,7 @@ func (a *api) generateContract(w http.ResponseWriter, r *http.Request) {
 		ProviderID  string `json:"providerId"`
 		Description string `json:"description"`
 	}
-	if err := readJSON(r, &body); err != nil {
+	if err := readJSON(w, r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}

@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/example/openapi-mocker/internal/adapter/webui"
+	"github.com/Eisenmann/openapi-mocker/internal/adapter/webui"
 )
 
 // NewRouter assembles a single http.Handler: the REST API (/api/...), the
@@ -63,6 +63,9 @@ func NewRouter(s Services) http.Handler {
 	mux.HandleFunc("GET /api/projects/{id}/logs", a.listLogs)
 
 	// --- dynamic mock server ---.
+	mux.HandleFunc("POST /mock/{projectId}/graphql", a.serveGraphQL)
+	mux.HandleFunc("GET /api/projects/{id}/graphql/schema", a.graphQLSchema)
+	mux.HandleFunc("GET /api/projects/{id}/graphql/operations", a.graphQLOperations)
 	mux.HandleFunc("/mock/{projectId}/{path...}", a.serveMock)
 	mux.HandleFunc("/mock/{projectId}", a.serveMockRoot)
 

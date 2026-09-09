@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/example/openapi-mocker/internal/domain"
+	"github.com/Eisenmann/openapi-mocker/internal/domain"
 )
 
 type ContractService struct {
@@ -57,7 +57,9 @@ func (s *ContractService) Publish(projectID, raw, source string) (*domain.Contra
 		return nil, err
 	}
 	format := "yaml"
-	if strings.HasPrefix(strings.TrimSpace(raw), "{") {
+	if IsGraphQL(raw) {
+		format = FormatGraphQL
+	} else if strings.HasPrefix(strings.TrimSpace(raw), "{") {
 		format = "json"
 	}
 	if source == "" {

@@ -27,6 +27,9 @@ go.work.sum
 # env file
 .env
 
+# Lint debug artifacts
+lint_err.txt
+
 # Editor/IDE
 # .idea/
 # .vscode/

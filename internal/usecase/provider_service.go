@@ -2,10 +2,9 @@ package usecase
 
 import (
 	"context"
-	"errors"
 	"strings"
 
-	"github.com/example/openapi-mocker/internal/domain"
+	"github.com/Eisenmann/openapi-mocker/internal/domain"
 )
 
 type ProviderService struct {
@@ -23,8 +22,9 @@ func (s *ProviderService) List(projectID string) []*domain.LLMProvider {
 
 func (s *ProviderService) Create(p *domain.LLMProvider) (*domain.LLMProvider, error) {
 	if strings.TrimSpace(p.Name) == "" || strings.TrimSpace(p.Type) == "" {
-		return nil, errors.New("name and type are required")
+		return nil, ErrNameAndTypeRequired
 	}
+
 	return s.repo.CreateProvider(p), nil
 }
 
@@ -42,10 +42,13 @@ func (s *ProviderService) Test(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
+
 	_, err = s.llm.Complete(ctx, p, ChatRequest{
 		SystemPrompt: "Answer with a single word.",
 		UserPrompt:   "Reply with the word: ok",
-		MaxTokens:    10,
+		Temperature:  0,
+		MaxTokens:    TestMaxTokens,
 	})
+
 	return err
 }

@@ -19,33 +19,42 @@ func findOperation(doc *openapi3.T, method, actualPath string) *matchedOperation
 	if doc == nil || doc.Paths == nil {
 		return nil
 	}
+
 	method = strings.ToUpper(method)
+
 	var best *matchedOperation
+
 	bestStaticSegments := -1
+
 	for tmpl, item := range doc.Paths.Map() {
 		if !matchPath(tmpl, actualPath) {
 			continue
 		}
+
 		op := item.GetOperation(method)
 		if op == nil {
 			continue
 		}
+
 		staticSegments := countStaticSegments(tmpl)
 		if staticSegments > bestStaticSegments {
 			bestStaticSegments = staticSegments
 			best = &matchedOperation{PathTemplate: tmpl, Operation: op}
 		}
 	}
+
 	return best
 }
 
 func countStaticSegments(tmpl string) int {
 	n := 0
+
 	for _, seg := range splitPath(tmpl) {
 		if !isParam(seg) {
 			n++
 		}
 	}
+
 	return n
 }
 
@@ -58,22 +67,27 @@ func splitPath(p string) []string {
 	if p == "" {
 		return []string{}
 	}
+
 	return strings.Split(p, "/")
 }
 
 func matchPath(tmpl, actual string) bool {
 	tParts := splitPath(tmpl)
+
 	aParts := splitPath(actual)
 	if len(tParts) != len(aParts) {
 		return false
 	}
+
 	for i, tp := range tParts {
 		if isParam(tp) {
 			continue
 		}
+
 		if tp != aParts[i] {
 			return false
 		}
 	}
+
 	return true
 }

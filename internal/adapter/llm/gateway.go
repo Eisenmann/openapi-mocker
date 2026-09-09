@@ -9,8 +9,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/example/openapi-mocker/internal/domain"
-	"github.com/example/openapi-mocker/internal/usecase"
+	"github.com/Eisenmann/openapi-mocker/internal/domain"
+	"github.com/Eisenmann/openapi-mocker/internal/usecase"
 )
 
 // provider is an internal interface for a specific HTTP backend. It is not

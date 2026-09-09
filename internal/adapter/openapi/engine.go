@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/example/openapi-mocker/internal/usecase"
+	"github.com/Eisenmann/openapi-mocker/internal/usecase"
 )
 
 // Engine implements usecase.ContractEngine on top of kin-openapi. The contract

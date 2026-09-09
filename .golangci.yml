@@ -22,7 +22,7 @@ run:
   # Resolve paths relative to go.mod (the module root).
   relative-path-mode: gomod
   # Go version from go.mod — used for language-version-aware linters.
-  go: "1.22"
+  go: "1.26"
   # Also lint test files.
   tests: true
   # Allow golangci-lint to pick up build info from VCS automatically.
@@ -39,21 +39,72 @@ linters:
   # Enable additional linters that are useful for this project.
   enable:
     - bidichk
+    - containedctx
+    - contextcheck
+    - copyloopvar
+    - cyclop
+    - decorder
+    - depguard
+    - dupl
+    - embeddedstructfieldcheck
+    - err113
+    - errcheck
+    - errchkjson
+    - errname
+    - errorlint
+    - exhaustive
+    - exhaustruct_v5
+    - fatcontext
+    - funcorder
+    - funlen   
+    - gocognit
+    - goconst
     - gocritic
     - godot
+    - godox
+    - gosec
+    - govet
+    - iface
+    - interfacebloat
+    - intrange
+    - ireturn
     - misspell
+    - mnd
     - lll
     - nakedret
     - nilnil
     - nosprintfhostport
+    - noctx
+    - noinlineerr
+    - paralleltest
+    - perfsprint
+    - prealloc
+    - revive
+    - staticcheck
+    - testifylint
+    - testpackage
+    - thelper
+    - tparallel    
     - unconvert
+    - unparam
+    - unused
+    - whitespace
+    - wsl_v5
     - wastedassign
-    - gomodguard
+    - gomodguard_v2
   # Disable linters that produce noise in this codebase.
   disable:
     - wrapcheck  # wrapping every stdlib error adds noise without much value here
     - gochecknoglobals  # composition-root globals are intentional in some deployments
   settings:
+    depguard:
+      rules:
+        usecase:
+          files:
+            - "internal/usecase/**"
+          deny:
+            - pkg: "github.com/Eisenmann/openapi-mocker/internal/adapter"
+              desc: "usecase must not depend on adapters"
     gocritic:
       enabled-tags:
         - diagnostic
@@ -61,7 +112,7 @@ linters:
         - performance
     godot:
       # English comments are the project convention; check punctuation only.
-      capitalize: false
+      capital: false
       scope: all
       period: true
     lll:
@@ -70,10 +121,29 @@ linters:
       tab-width: 1
     nakedret:
       max-func-lines: 10
-    gomodguard:
+    gomodguard_v2:
       allowed:
-        golang-versions:
-          - ">= 1.22.0"
+        - module: github.com/agnivade/levenshtein
+        - module: github.com/getkin/kin-openapi
+        - module: github.com/go-openapi/jsonpointer
+        - module: github.com/go-openapi/swag
+        - module: github.com/invopop/yaml
+        - module: github.com/josharian/intern
+        - module: github.com/mailru/easyjson
+        - module: github.com/mohae/deepcopy
+        - module: github.com/perimeterx/marshmallow
+        - module: github.com/vektah/gqlparser/v2
+        - module: gopkg.in/yaml.v3
+      blocked: []
+    ireturn:
+      # The llm provider factory legitimately returns the internal
+      # `provider` interface (strategy pattern over five HTTP backends).
+      allow:
+        - anon
+        - error
+        - empty
+        - stdlib
+        - provider
   # -----------------------------------------------------------------------
   # Per-linter / per-path exclusions tuned to the patterns seen in this code.
   # -----------------------------------------------------------------------
@@ -89,23 +159,41 @@ linters:
       - common-false-positives
       - legacy
     rules:
-      # Errors returned by http.ResponseWriter.Write / WriteHeader are
-      # deliberately ignored in HTTP handlers once headers have been sent.
-      - path: _handlers\.go$
-        linters:
-          - errcheck
-        text: "Error return value of .*\\.(Write|WriteHeader) is not checked"
       # math/rand is used on purpose for chaos-testing, not cryptography.
       - path: internal/usecase/mockserving_service\.go$
         linters:
           - gosec
         text: "G404"
-      # jsonstore deliberately ignores save() errors after mutations — the
-      # in-memory state is the source of truth.
-      - path: internal/adapter/repository/jsonstore/store\.go$
+      # math/rand is used on purpose for generating random mock example
+      # values (no security requirement) — crypto/rand is unnecessary.
+      - path: internal/adapter/openapi/example\.go$
         linters:
-          - errcheck
-        text: "Error return value of .*\\.save is not checked"
+          - gosec
+        text: "G404"
+      # Writing mock/GraphQL responses to http.ResponseWriter is the whole
+      # point of these handlers; the gosec G705 taint heuristic does not
+      # apply to a mock server that intentionally echoes contract-shaped
+      # data. Error checking of these writes is governed by errcheck rules.
+      - path: internal/adapter/httpapi/.*\.go$
+        linters:
+          - gosec
+        text: "G705"
+      # Multipart upload parsing in saveContract is already bounded by
+      # http.MaxBytesReader (maxJSONBodyBytes); the G120 heuristic cannot see
+      # the bound and flags the access anyway — false positive here.
+      - path: internal/adapter/httpapi/handlers_contracts\.go$
+        linters:
+          - gosec
+        text: "G120"
+      # Partial struct literals are intentional throughout these packages:
+      #   - http.Client/Server rely on idiomatic zero-value defaults;
+      #   - gqlparser ast.Source has BuiltIn=false by design for app SDL;
+      #   - usecase result/DTO structs omit fields meaning "empty/not
+      #     applicable" for the response shape;
+      #   - Engine/Store start with a zero-value mutex.
+      - path: (cmd/server|internal/adapter/(graphql|openapi|llm|repository/jsonstore))/
+        linters:
+          - exhaustruct_v5
 
 # ---------------------------------------------------------------------------
 # Formatters
@@ -121,7 +209,7 @@ formatters:
       sections:
         - standard
         - default
-        - prefix(github.com/example/openapi-mocker)
+        - prefix(github.com/Eisenmann/openapi-mocker)
   exclusions:
     generated: strict
 

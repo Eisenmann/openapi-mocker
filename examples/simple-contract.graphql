@@ -1,0 +1,34 @@
+"""A minimal GraphQL schema for manual testing of OpenAPI Mocker's GraphQL support."""
+schema {
+  query: Query
+  mutation: Mutation
+}
+
+type Query {
+  """Health check."""
+  ping: String!
+  """List all users."""
+  users(limit: Int = 10): [User!]!
+  """Get a single user."""
+  user(id: ID!): User
+}
+
+type Mutation {
+  """Create a user."""
+  createUser(input: CreateUserInput!): User!
+  """Delete a user."""
+  deleteUser(id: ID!): Boolean!
+}
+
+type User {
+  id: ID!
+  name: String!
+  email: String!
+  age: Int
+}
+
+input CreateUserInput {
+  name: String!
+  email: String!
+  age: Int
+}
