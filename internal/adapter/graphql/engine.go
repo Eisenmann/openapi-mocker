@@ -794,28 +794,28 @@ func selSetDepth(selSet ast.SelectionSet,
 	frags map[string]*ast.FragmentDefinition,
 	depth int,
 ) int {
-	max := depth
+	maxDepth := depth
 
 	for _, sel := range selSet {
 		switch v := sel.(type) {
 		case *ast.Field:
-			if d := selSetDepth(v.SelectionSet, frags, depth+1); d > max {
-				max = d
+			if d := selSetDepth(v.SelectionSet, frags, depth+1); d > maxDepth {
+				maxDepth = d
 			}
 		case *ast.InlineFragment:
-			if d := selSetDepth(v.SelectionSet, frags, depth+1); d > max {
-				max = d
+			if d := selSetDepth(v.SelectionSet, frags, depth+1); d > maxDepth {
+				maxDepth = d
 			}
 		case *ast.FragmentSpread:
 			if frag := frags[v.Name]; frag != nil {
-				if d := selSetDepth(frag.SelectionSet, frags, depth+1); d > max {
-					max = d
+				if d := selSetDepth(frag.SelectionSet, frags, depth+1); d > maxDepth {
+					maxDepth = d
 				}
 			}
 		}
 	}
 
-	return max
+	return maxDepth
 }
 
 func findField(def *ast.Definition, name string) *ast.FieldDefinition {

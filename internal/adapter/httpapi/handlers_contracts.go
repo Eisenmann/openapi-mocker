@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -14,6 +13,7 @@ func (a *api) getContract(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, err)
 		return
 	}
+
 	writeJSON(w, http.StatusOK, c)
 }
 
@@ -24,14 +24,16 @@ func (a *api) listContractVersions(w http.ResponseWriter, r *http.Request) {
 func (a *api) getContractVersion(w http.ResponseWriter, r *http.Request) {
 	version, err := strconv.Atoi(r.PathValue("version"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, errors.New("invalid version number"))
+		writeError(w, http.StatusBadRequest, errInvalidVersionNumber)
 		return
 	}
+
 	c, err := a.s.Contracts.GetVersion(r.PathValue("id"), version)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err)
 		return
 	}
+
 	writeJSON(w, http.StatusOK, c)
 }
 
@@ -40,6 +42,7 @@ func (a *api) getContractVersion(w http.ResponseWriter, r *http.Request) {
 // usecase.ContractService.Publish.
 func (a *api) saveContract(w http.ResponseWriter, r *http.Request) {
 	projectID := r.PathValue("id")
+
 	var raw, source string
 
 	if ct := r.Header.Get("Content-Type"); strings.HasPrefix(ct, "multipart/form-data") {
@@ -47,24 +50,30 @@ func (a *api) saveContract(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
+
 		file, _, err := r.FormFile("file")
 		if err != nil {
-			writeError(w, http.StatusBadRequest, errors.New("file not provided (field 'file')"))
+			writeError(w, http.StatusBadRequest, errFileNotProvided)
 			return
 		}
 		defer file.Close()
+
 		b, err := io.ReadAll(file)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
+
 		raw, source = string(b), "upload"
 	} else {
 		var body struct{ Raw, Source string }
-		if err := readJSON(w, r, &body); err != nil {
+
+		err := readJSON(r, &body)
+		if err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
+
 		raw, source = body.Raw, body.Source
 	}
 
@@ -73,61 +82,73 @@ func (a *api) saveContract(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnprocessableEntity, err)
 		return
 	}
+
 	writeJSON(w, http.StatusCreated, c)
 }
 
 func (a *api) rollbackContract(w http.ResponseWriter, r *http.Request) {
 	version, err := strconv.Atoi(r.PathValue("version"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, errors.New("invalid version number"))
+		writeError(w, http.StatusBadRequest, errInvalidVersionNumber)
 		return
 	}
+
 	c, err := a.s.Contracts.Rollback(r.PathValue("id"), version)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err)
 		return
 	}
+
 	writeJSON(w, http.StatusCreated, c)
 }
 
 func (a *api) diffContract(w http.ResponseWriter, r *http.Request) {
 	fromVersion, err := strconv.Atoi(r.URL.Query().Get("from"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, errors.New("from parameter is required and must be a number"))
+		writeError(w, http.StatusBadRequest, errFromParamRequired)
 		return
 	}
+
 	var toVersion *int
+
 	if toStr := r.URL.Query().Get("to"); toStr != "" {
 		v, err := strconv.Atoi(toStr)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, errors.New("to parameter must be a number"))
+			writeError(w, http.StatusBadRequest, errToParamMustBeNumber)
 			return
 		}
+
 		toVersion = &v
 	}
+
 	diff, err := a.s.Contracts.Diff(r.PathValue("id"), fromVersion, toVersion)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err)
 		return
 	}
+
 	writeJSON(w, http.StatusOK, diff)
 }
 
 func (a *api) validateContract(w http.ResponseWriter, r *http.Request) {
 	var body struct{ Raw string }
-	if err := readJSON(w, r, &body); err != nil {
+
+	err := readJSON(r, &body)
+	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+
 	writeJSON(w, http.StatusOK, a.s.Contracts.Validate(body.Raw))
 }
 
 func (a *api) listEndpoints(w http.ResponseWriter, r *http.Request) {
 	endpoints, err := a.s.Contracts.ListEndpoints(r.PathValue("id"))
 	if err != nil {
-		writeError(w, http.StatusNotFound, errors.New("contract has not been loaded yet"))
+		writeError(w, http.StatusNotFound, errContractNotLoaded)
 		return
 	}
+
 	writeJSON(w, http.StatusOK, endpoints)
 }
 
@@ -136,14 +157,16 @@ func (a *api) generateContract(w http.ResponseWriter, r *http.Request) {
 		ProviderID  string `json:"providerId"`
 		Description string `json:"description"`
 	}
-	if err := readJSON(w, r, &body); err != nil {
+	if err := readJSON(r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+
 	raw, warning, err := a.s.Contracts.GenerateFromDescription(r.Context(), body.ProviderID, body.Description)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err)
 		return
 	}
+
 	writeJSON(w, http.StatusOK, map[string]string{"raw": raw, "warning": warning})
 }

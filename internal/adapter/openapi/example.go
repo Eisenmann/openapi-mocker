@@ -16,11 +16,13 @@ func exampleFromSchema(schemaRef *openapi3.SchemaRef, depth int) interface{} {
 	if schemaRef == nil || schemaRef.Value == nil || depth > 8 {
 		return nil
 	}
+
 	s := schemaRef.Value
 
 	if s.Example != nil {
 		return s.Example
 	}
+
 	if len(s.Enum) > 0 {
 		return s.Enum[0]
 	}
@@ -31,9 +33,11 @@ func exampleFromSchema(schemaRef *openapi3.SchemaRef, depth int) interface{} {
 		for name, propRef := range s.Properties {
 			obj[name] = exampleFromSchema(propRef, depth+1)
 		}
+
 		if len(obj) == 0 && s.AdditionalProperties.Schema != nil {
 			obj["key"] = exampleFromSchema(s.AdditionalProperties.Schema, depth+1)
 		}
+
 		return obj
 	case s.Type.Is("array"):
 		return []interface{}{exampleFromSchema(s.Items, depth+1)}
@@ -46,6 +50,7 @@ func exampleFromSchema(schemaRef *openapi3.SchemaRef, depth int) interface{} {
 	case s.Type.Is("boolean"):
 		return rand.Intn(2) == 0
 	}
+
 	return nil
 }
 
@@ -78,21 +83,26 @@ func responseExample(op *openapi3.Operation, statusCode string) (body []byte, co
 	if op == nil || op.Responses == nil {
 		return nil, "", false
 	}
+
 	respRef := op.Responses.Value(statusCode)
 	if respRef == nil {
 		respRef = op.Responses.Default()
 	}
+
 	if respRef == nil || respRef.Value == nil {
 		return nil, "", false
 	}
+
 	mt := respRef.Value.Content.Get("application/json")
 	if mt == nil {
 		return []byte(""), "", true
 	}
+
 	if mt.Example != nil {
 		b, _ := json.MarshalIndent(mt.Example, "", "  ")
 		return b, "application/json", true
 	}
+
 	if len(mt.Examples) > 0 {
 		for _, ex := range mt.Examples {
 			if ex.Value != nil {
@@ -101,8 +111,10 @@ func responseExample(op *openapi3.Operation, statusCode string) (body []byte, co
 			}
 		}
 	}
+
 	val := exampleFromSchema(mt.Schema, 0)
 	b, _ := json.MarshalIndent(val, "", "  ")
+
 	return b, "application/json", true
 }
 
@@ -112,21 +124,26 @@ func responseSchemaJSON(op *openapi3.Operation, statusCode string) (string, erro
 	if op == nil || op.Responses == nil {
 		return "{}", nil
 	}
+
 	respRef := op.Responses.Value(statusCode)
 	if respRef == nil {
 		respRef = op.Responses.Default()
 	}
+
 	if respRef == nil || respRef.Value == nil {
 		return "{}", nil
 	}
+
 	mt := respRef.Value.Content.Get("application/json")
 	if mt == nil || mt.Schema == nil {
 		return "{}", nil
 	}
+
 	b, err := json.MarshalIndent(mt.Schema.Value, "", "  ")
 	if err != nil {
 		return "", err
 	}
+
 	return string(b), nil
 }
 
@@ -136,23 +153,31 @@ func validateBodyAgainstResponseSchema(op *openapi3.Operation, statusCode string
 	if op == nil || op.Responses == nil || len(body) == 0 {
 		return nil
 	}
+
 	respRef := op.Responses.Value(statusCode)
 	if respRef == nil {
 		respRef = op.Responses.Default()
 	}
+
 	if respRef == nil || respRef.Value == nil {
 		return nil // no description for this status code in the contract — nothing to validate against.
 	}
+
 	mt := respRef.Value.Content.Get("application/json")
 	if mt == nil || mt.Schema == nil || mt.Schema.Value == nil {
 		return nil
 	}
+
 	var data interface{}
-	if err := json.Unmarshal(body, &data); err != nil {
+	err := json.Unmarshal(body, &data)
+	if err != nil {
 		return fmt.Errorf("body is not valid JSON: %w", err)
 	}
-	if err := mt.Schema.Value.VisitJSON(data); err != nil {
+
+	err = mt.Schema.Value.VisitJSON(data)
+	if err != nil {
 		return fmt.Errorf("body does not match response schema: %w", err)
 	}
+
 	return nil
 }

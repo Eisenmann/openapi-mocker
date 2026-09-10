@@ -34,8 +34,10 @@ type api struct {
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
+
 	if v != nil {
-		if err := json.NewEncoder(w).Encode(v); err != nil {
+		err := json.NewEncoder(w).Encode(v)
+		if err != nil {
 			log.Printf("error encoding response: %v", err)
 		}
 	}
@@ -51,10 +53,11 @@ func writeError(w http.ResponseWriter, defaultStatus int, err error) {
 	if errors.Is(err, domain.ErrNotFound) {
 		status = http.StatusNotFound
 	}
+
 	writeJSON(w, status, map[string]string{"error": err.Error()})
 }
 
-func readJSON(w http.ResponseWriter, r *http.Request, v interface{}) error {
+func readJSON(r *http.Request, v interface{}) error {
 	defer r.Body.Close()
 	return json.NewDecoder(r.Body).Decode(v)
 }

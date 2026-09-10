@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -51,20 +50,25 @@ func (s *ContractService) Validate(raw string) ValidationResult {
 // serves the latest saved version; there is no separate "deploy" step.
 func (s *ContractService) Publish(projectID, raw, source string) (*domain.Contract, error) {
 	if strings.TrimSpace(raw) == "" {
-		return nil, errors.New("contract is empty")
+		return nil, ErrContractEmpty
 	}
-	if err := s.engine.ParseAndValidate([]byte(raw)); err != nil {
+
+	err := s.engine.ParseAndValidate([]byte(raw))
+	if err != nil {
 		return nil, err
 	}
+
 	format := "yaml"
 	if IsGraphQL(raw) {
 		format = FormatGraphQL
 	} else if strings.HasPrefix(strings.TrimSpace(raw), "{") {
 		format = "json"
 	}
+
 	if source == "" {
 		source = "manual"
 	}
+
 	return s.contracts.AddVersion(projectID, format, raw, source), nil
 }
 
@@ -75,6 +79,7 @@ func (s *ContractService) Rollback(projectID string, version int) (*domain.Contr
 	if err != nil {
 		return nil, err
 	}
+
 	return s.contracts.AddVersion(projectID, old.Format, old.Raw, fmt.Sprintf("rollback-to-v%d", version)), nil
 }
 
@@ -92,15 +97,18 @@ func (s *ContractService) Diff(projectID string, fromVersion int, toVersion *int
 	if err != nil {
 		return ContractDiff{}, fmt.Errorf("from version not found: %w", err)
 	}
+
 	var to *domain.Contract
 	if toVersion == nil {
 		to, err = s.contracts.GetActive(projectID)
 	} else {
 		to, err = s.contracts.GetVersion(projectID, *toVersion)
 	}
+
 	if err != nil {
 		return ContractDiff{}, err
 	}
+
 	return ContractDiff{
 		FromVersion: from.Version,
 		ToVersion:   to.Version,
@@ -113,6 +121,7 @@ func (s *ContractService) ListEndpoints(projectID string) ([]Endpoint, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return s.engine.ListEndpoints([]byte(c.Raw))
 }
 
@@ -125,12 +134,14 @@ func (s *ContractService) GenerateFromDescription(
 	providerID, description string,
 ) (raw, validationWarning string, err error) {
 	if providerID == "" || strings.TrimSpace(description) == "" {
-		return "", "", errors.New("providerId and description are required")
+		return "", "", ErrProviderAndDescRequired
 	}
+
 	provider, err := s.providers.GetProvider(providerID)
 	if err != nil {
 		return "", "", fmt.Errorf("LLM provider not found: %w", err)
 	}
+
 	system := "You are an experienced API architect. Generate complete and valid " +
 		"OpenAPI 3.0.3 contracts in JSON format. " +
 		"Respond ONLY with a valid OpenAPI JSON document (openapi, info, paths, components) " +
@@ -144,17 +155,20 @@ func (s *ContractService) GenerateFromDescription(
 		ChatRequest{
 			SystemPrompt: system,
 			UserPrompt:   user,
-			Temperature:  0.4,
-			MaxTokens:    4000,
+			Temperature:  ContractTemperature,
+			MaxTokens:    ContractMaxTokens,
 		})
 	if err != nil {
 		return "", "", err
 	}
+
 	raw = extractJSON(resp)
-	if err := s.engine.ParseAndValidate([]byte(raw)); err != nil {
+	err = s.engine.ParseAndValidate([]byte(raw))
+	if err != nil {
 		return raw,
 			"LLM returned a contract that is not valid OpenAPI 3.x — please review and fix manually: " + err.Error(),
 			nil
 	}
+
 	return raw, "", nil
 }

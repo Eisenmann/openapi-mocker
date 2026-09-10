@@ -18,6 +18,7 @@ func NewRouter(s Services) http.Handler {
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
+
 		if _, err := w.Write([]byte("ok")); err != nil {
 			http.Error(w, "failed to write response", http.StatusInternalServerError)
 		}
@@ -82,6 +83,7 @@ func spaFallback(fs http.Handler) http.Handler {
 			http.NotFound(w, r)
 			return
 		}
+
 		fs.ServeHTTP(w, r)
 	})
 }
@@ -91,10 +93,12 @@ func withCORS(next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Mock-Scenario")
+
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
+
 		next.ServeHTTP(w, r)
 	})
 }

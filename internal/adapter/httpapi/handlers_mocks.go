@@ -13,7 +13,7 @@ func (a *api) listMocks(w http.ResponseWriter, r *http.Request) {
 func (a *api) createMock(w http.ResponseWriter, r *http.Request) {
 	var m domain.MockRule
 
-	err := readJSON(w, r, &m)
+	err := readJSON(r, &m)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
@@ -33,7 +33,7 @@ func (a *api) createMock(w http.ResponseWriter, r *http.Request) {
 func (a *api) updateMock(w http.ResponseWriter, r *http.Request) {
 	var m domain.MockRule
 
-	err := readJSON(w, r, &m)
+	err := readJSON(r, &m)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
@@ -69,7 +69,7 @@ func (a *api) generateMock(w http.ResponseWriter, r *http.Request) {
 		Hints      string `json:"hints"`
 	}
 
-	err := readJSON(w, r, &req)
+	err := readJSON(r, &req)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return

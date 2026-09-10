@@ -13,6 +13,7 @@
 package main
 
 import (
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -36,6 +37,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to initialize store (%s): %v", dataDir, err)
 	}
+
 	contractEngine := openapi.NewEngine()   // implements usecase.ContractEngine.
 	llmGateway := llm.NewGateway()          // implements usecase.LLMGateway.
 	codeGenerator := codegen.NewGenerator() // implements usecase.CodeGenerator.
@@ -69,7 +71,8 @@ func main() {
 	log.Printf("OpenAPI Mocker started on :%s (data: %s)", port, dataDir)
 	log.Printf("UI:  http://localhost:%s", port)
 	log.Printf("API: http://localhost:%s/api", port)
-	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+
+	if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
 }
@@ -78,5 +81,6 @@ func getEnv(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
 	}
+
 	return def
 }

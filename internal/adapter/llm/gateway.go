@@ -30,6 +30,7 @@ func (g *Gateway) Complete(ctx context.Context, cfg *domain.LLMProvider, req use
 	if err != nil {
 		return "", err
 	}
+
 	return p.complete(ctx, req)
 }
 
