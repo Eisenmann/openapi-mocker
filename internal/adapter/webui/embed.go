@@ -19,5 +19,6 @@ func FS() fs.FS {
 	if err != nil {
 		panic(err)
 	}
+
 	return sub
 }

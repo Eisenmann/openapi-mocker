@@ -20,16 +20,21 @@ func (a *api) serveMock(w http.ResponseWriter, r *http.Request) {
 	if resp.DelayMs > 0 {
 		time.Sleep(time.Duration(resp.DelayMs) * time.Millisecond)
 	}
+
 	for k, v := range resp.Headers {
 		w.Header().Set(k, v)
 	}
+
 	if resp.ContentType != "" {
 		w.Header().Set("Content-Type", resp.ContentType)
 	}
+
 	if resp.Source != "" {
 		w.Header().Set("X-Mock-Source", resp.Source)
 	}
+
 	w.WriteHeader(resp.StatusCode)
+
 	if _, err := w.Write(resp.Body); err != nil {
 		http.Error(w, "failed to write response", http.StatusInternalServerError)
 	}
@@ -37,14 +42,18 @@ func (a *api) serveMock(w http.ResponseWriter, r *http.Request) {
 
 func (a *api) serveMockRoot(w http.ResponseWriter, r *http.Request) {
 	scenario := r.Header.Get("X-Mock-Scenario")
+
 	resp := a.s.MockServing.Serve(r.PathValue("projectId"), r.Method, "/", scenario)
 	if resp.DelayMs > 0 {
 		time.Sleep(time.Duration(resp.DelayMs) * time.Millisecond)
 	}
+
 	if resp.ContentType != "" {
 		w.Header().Set("Content-Type", resp.ContentType)
 	}
+
 	w.WriteHeader(resp.StatusCode)
+
 	if _, err := w.Write(resp.Body); err != nil {
 		http.Error(w, "failed to write response", http.StatusInternalServerError)
 	}

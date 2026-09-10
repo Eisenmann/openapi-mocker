@@ -17,7 +17,7 @@ func (a *api) listProvidersGlobal(w http.ResponseWriter, _ *http.Request) {
 func (a *api) createProvider(w http.ResponseWriter, r *http.Request) {
 	var p domain.LLMProvider
 
-	err := readJSON(w, r, &p)
+	err := readJSON(r, &p)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
@@ -35,7 +35,7 @@ func (a *api) createProvider(w http.ResponseWriter, r *http.Request) {
 func (a *api) updateProvider(w http.ResponseWriter, r *http.Request) {
 	var p domain.LLMProvider
 
-	err := readJSON(w, r, &p)
+	err := readJSON(r, &p)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return

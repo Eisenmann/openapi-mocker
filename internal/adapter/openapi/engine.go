@@ -25,7 +25,9 @@ func (e *Engine) Validate(raw []byte) usecase.ValidationResult {
 	if err != nil {
 		return usecase.ValidationResult{Valid: false, Errors: []string{err.Error()}}
 	}
+
 	opCount := 0
+
 	pathCount := 0
 	if doc.Paths != nil {
 		pathCount = doc.Paths.Len()
@@ -33,6 +35,7 @@ func (e *Engine) Validate(raw []byte) usecase.ValidationResult {
 			opCount += len(item.Operations())
 		}
 	}
+
 	return usecase.ValidationResult{Valid: true, PathCount: pathCount, OpCount: opCount}
 }
 
@@ -46,7 +49,9 @@ func (e *Engine) ListEndpoints(raw []byte) ([]usecase.Endpoint, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	var out []usecase.Endpoint
+
 	if doc.Paths != nil {
 		for path, item := range doc.Paths.Map() {
 			for method, op := range item.Operations() {
@@ -54,12 +59,15 @@ func (e *Engine) ListEndpoints(raw []byte) ([]usecase.Endpoint, error) {
 			}
 		}
 	}
+
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Path != out[j].Path {
 			return out[i].Path < out[j].Path
 		}
+
 		return out[i].Method < out[j].Method
 	})
+
 	return out, nil
 }
 
@@ -68,10 +76,12 @@ func (e *Engine) FindOperation(raw []byte, method, path string) (pathTemplate, s
 	if err != nil {
 		return "", "", false
 	}
+
 	m := findOperation(doc, method, path)
 	if m == nil {
 		return "", "", false
 	}
+
 	return m.PathTemplate, m.Operation.Summary, true
 }
 
@@ -80,10 +90,12 @@ func (e *Engine) ResponseSchemaJSON(raw []byte, method, path, statusCode string)
 	if err != nil {
 		return "", err
 	}
+
 	m := findOperation(doc, method, path)
 	if m == nil {
 		return "", fmt.Errorf("operation %s %s not found in contract", method, path)
 	}
+
 	return responseSchemaJSON(m.Operation, statusCode)
 }
 
@@ -94,10 +106,12 @@ func (e *Engine) ExampleResponse(
 	if err != nil {
 		return nil, "", err
 	}
+
 	m := findOperation(doc, method, path)
 	if m == nil {
 		return nil, "", fmt.Errorf("operation %s %s not found in contract", method, path)
 	}
+
 	status := statusCode
 	if m.Operation.Responses != nil && m.Operation.Responses.Value(status) == nil {
 		for code := range m.Operation.Responses.Map() {
@@ -105,7 +119,9 @@ func (e *Engine) ExampleResponse(
 			break
 		}
 	}
+
 	body, contentType, _ = responseExample(m.Operation, status)
+
 	return body, contentType, nil
 }
 
@@ -114,10 +130,12 @@ func (e *Engine) ValidateResponseBody(raw []byte, method, path, statusCode strin
 	if err != nil {
 		return err
 	}
+
 	m := findOperation(doc, method, path)
 	if m == nil {
 		return fmt.Errorf("operation %s %s not found in contract", method, path)
 	}
+
 	return validateBodyAgainstResponseSchema(m.Operation, statusCode, body)
 }
 

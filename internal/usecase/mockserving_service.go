@@ -46,7 +46,7 @@ func (s *MockServingService) Serve(projectID, method, path, scenario string) Moc
 	contract, err := s.contracts.GetActive(projectID)
 	if err != nil {
 		return s.finish(projectID, method, path, &MockResponse{
-			StatusCode: 404, ContentType: "application/json",
+			StatusCode: StatusNotFound, ContentType: ContentTypeJSON,
 			Body: errorBody("no contract has been uploaded for this project yet"),
 		})
 	}
@@ -54,7 +54,7 @@ func (s *MockServingService) Serve(projectID, method, path, scenario string) Moc
 	pathTemplate, _, found := s.engine.FindOperation([]byte(contract.Raw), method, path)
 	if !found {
 		return s.finish(projectID, method, path, &MockResponse{
-			StatusCode: 404, ContentType: "application/json",
+			StatusCode: StatusNotFound, ContentType: ContentTypeJSON,
 			Body: errorBody(fmt.Sprintf("endpoint not described in contract: %s %s", method, path)),
 		})
 	}
@@ -65,54 +65,65 @@ func (s *MockServingService) Serve(projectID, method, path, scenario string) Moc
 
 	// Fallback: no rule configured manually or via LLM — example from schema, 200.
 	status := "200"
+
 	body, contentType, err := s.engine.ExampleResponse([]byte(contract.Raw), method, path, status)
 	if err != nil {
 		return s.finish(projectID, method, path, &MockResponse{
-			StatusCode: 500, ContentType: "application/json",
+			StatusCode: StatusInternalServerError, ContentType: ContentTypeJSON,
 			Body: errorBody("failed to build response example: " + err.Error()),
 		})
 	}
+
 	code, _ := strconv.Atoi(status)
+
 	return s.finish(projectID, method, path, &MockResponse{
-		StatusCode: code, ContentType: nonEmpty(contentType, "application/json"),
+		StatusCode: code, ContentType: nonEmpty(contentType, ContentTypeJSON),
 		Body: body, Source: "schema-example", Matched: true,
 	})
 }
 
 func (s *MockServingService) findRule(projectID, pathTemplate, method, scenario string) *domain.MockRule {
 	method = strings.ToUpper(method)
+
 	var fallback *domain.MockRule
+
 	for _, m := range s.mocks.ListMocks(projectID) {
 		if !strings.EqualFold(m.Method, method) || m.Path != pathTemplate {
 			continue
 		}
+
 		if scenario != "" && m.Scenario == scenario {
 			return m
 		}
+
 		if m.Scenario == "" || m.Scenario == "default" {
 			fallback = m
 		}
 	}
+
 	return fallback
 }
 
 func (s *MockServingService) fromRule(rule *domain.MockRule) *MockResponse {
 	// Chaos testing: with probability FailRatePct, return a random 5xx error,
 	// even when the rule describes a successful scenario.
-	if rule.FailRatePct > 0 && rand.Intn(100) < rule.FailRatePct {
-		code := 500 + rand.Intn(4) // 500-503
+	if rule.FailRatePct > 0 && rand.Intn(PercentBase) < rule.FailRatePct {
+		code := StatusInternalServerError + rand.Intn(ServerErrorRange) // 500-503
+
 		return &MockResponse{
-			StatusCode: code, ContentType: "application/json",
+			StatusCode: code, ContentType: ContentTypeJSON,
 			Body:    errorBody("injected failure for chaos testing"),
 			DelayMs: rule.DelayMs, Source: "chaos-injection", MatchedRule: rule.ID, Matched: true,
 		}
 	}
+
 	code := rule.StatusCode
 	if code == 0 {
 		code = 200
 	}
+
 	return &MockResponse{
-		StatusCode: code, ContentType: nonEmpty(rule.ContentType, "application/json"),
+		StatusCode: code, ContentType: nonEmpty(rule.ContentType, ContentTypeJSON),
 		Headers: rule.Headers, Body: []byte(rule.Body), DelayMs: rule.DelayMs,
 		Source: "rule", MatchedRule: rule.ID, Matched: true,
 	}
@@ -124,6 +135,7 @@ func (s *MockServingService) finish(projectID, method, path string, resp *MockRe
 		StatusCode: resp.StatusCode, MatchedRule: resp.MatchedRule, Matched: resp.Matched,
 		Timestamp: time.Now().UTC(),
 	})
+
 	return *resp
 }
 
@@ -131,6 +143,7 @@ func nonEmpty(s, def string) string {
 	if strings.TrimSpace(s) == "" {
 		return def
 	}
+
 	return s
 }
 

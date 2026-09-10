@@ -24,7 +24,7 @@ func (a *api) serveGraphQL(w http.ResponseWriter, r *http.Request) {
 		Variables     map[string]any `json:"variables"`
 	}
 
-	err := readJSON(w, r, &body)
+	err := readJSON(r, &body)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return

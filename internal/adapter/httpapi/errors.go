@@ -13,5 +13,4 @@ var (
 	errContractNotLoaded    = errors.New("contract has not been loaded yet")
 	errGraphQLNotEnabled    = errors.New("GraphQL not enabled")
 	errQueryRequired        = errors.New("query is required")
-	errGraphQLPostOnly      = errors.New("GraphQL mock endpoint accepts POST only")
 )

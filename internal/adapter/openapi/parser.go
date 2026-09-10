@@ -16,10 +16,12 @@ import (
 func parse(raw []byte) (*openapi3.T, error) {
 	loader := openapi3.NewLoader()
 	loader.IsExternalRefsAllowed = false
+
 	doc, err := loader.LoadFromData(raw)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse contract: %w", err)
 	}
+
 	return doc, nil
 }
 
@@ -28,8 +30,10 @@ func parseAndValidate(raw []byte) (*openapi3.T, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	if err := doc.Validate(context.Background()); err != nil {
 		return nil, fmt.Errorf("contract failed validation: %w", err)
 	}
+
 	return doc, nil
 }

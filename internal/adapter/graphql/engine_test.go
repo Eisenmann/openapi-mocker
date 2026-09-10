@@ -684,9 +684,12 @@ type Node { name: String! child: Node }
 `
 
 	deepQuery := "{ root"
-	for i := 0; i < 200; i++ {
-		deepQuery += " { child"
+	var deepQuerySb687 strings.Builder
+	for range 200 {
+		deepQuerySb687.WriteString(" { child")
 	}
+	deepQuery += deepQuerySb687.String()
+
 	deepQuery += " { name"
 	deepQuery += strings.Repeat("}", 202)
 

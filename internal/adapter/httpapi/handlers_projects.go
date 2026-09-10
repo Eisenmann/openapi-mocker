@@ -9,7 +9,7 @@ func (a *api) listProjects(w http.ResponseWriter, _ *http.Request) {
 func (a *api) createProject(w http.ResponseWriter, r *http.Request) {
 	var body struct{ Name, Description string }
 
-	err := readJSON(w, r, &body)
+	err := readJSON(r, &body)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
