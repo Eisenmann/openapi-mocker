@@ -464,7 +464,7 @@ func newTestRouter(t *testing.T) (http.Handler, *memProjectRepo, *memContractRep
 		Logs:           usecase.NewLogService(logs),
 	}
 
-	return httpapi.NewRouter(svc), projects, contracts, mocks, providers, logs, engine, llm, codegen, gqlEngine
+	return httpapi.NewRouter(&svc), projects, contracts, mocks, providers, logs, engine, llm, codegen, gqlEngine
 }
 
 func doRequest(t *testing.T, h http.Handler, method, path string, body io.Reader, headers map[string]string) *httptest.ResponseRecorder {

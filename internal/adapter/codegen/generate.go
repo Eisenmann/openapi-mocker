@@ -17,8 +17,57 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 
+	"github.com/Eisenmann/openapi-mocker/internal/domain/ports"
 	"github.com/Eisenmann/openapi-mocker/internal/usecase"
 )
+
+// defaultOperationName is the identifier used when an operation ID cannot
+// be derived from the OpenAPI spec.
+const defaultOperationName = "Operation"
+
+// buildNativeResult combines server and client files with project metadata
+// into a GenerationResult for native adapters.
+func buildNativeResult(
+	req *ports.GenerationRequest,
+	lang ports.Language,
+	serverFiles map[string]string,
+	clientFiles map[string]string,
+	projectFiles map[string]string,
+) (*ports.GenerationResult, error) {
+	files := make([]ports.GeneratedFile, 0, len(serverFiles)+len(clientFiles)+len(projectFiles))
+
+	for name, content := range serverFiles {
+		files = append(files, ports.GeneratedFile{
+			Path:    req.OutputPath + "/server/" + name,
+			Content: []byte(content),
+			IsNew:   true,
+		})
+	}
+
+	for name, content := range clientFiles {
+		files = append(files, ports.GeneratedFile{
+			Path:    req.OutputPath + "/client/" + name,
+			Content: []byte(content),
+			IsNew:   true,
+		})
+	}
+
+	for name, content := range projectFiles {
+		files = append(files, ports.GeneratedFile{
+			Path:    req.OutputPath + "/" + name,
+			Content: []byte(content),
+			IsNew:   true,
+		})
+	}
+
+	return &ports.GenerationResult{
+		Files:      files,
+		Language:   lang,
+		Strategy:   ports.StrategyNative,
+		Warnings:   []string{},
+		CICDConfig: nil,
+	}, nil
+}
 
 type Generator struct{}
 
@@ -27,7 +76,7 @@ func NewGenerator() *Generator { return &Generator{} }
 var _ usecase.CodeGenerator = (*Generator)(nil)
 
 func (g *Generator) GenerateServerZip(raw []byte, pkgName string) ([]byte, error) {
-	doc, err := parseAndValidate(raw)
+	doc, err := parseAndValidate(context.Background(), raw)
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +85,7 @@ func (g *Generator) GenerateServerZip(raw []byte, pkgName string) ([]byte, error
 }
 
 func (g *Generator) GenerateClientZip(raw []byte, pkgName string) ([]byte, error) {
-	doc, err := parseAndValidate(raw)
+	doc, err := parseAndValidate(context.Background(), raw)
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +93,7 @@ func (g *Generator) GenerateClientZip(raw []byte, pkgName string) ([]byte, error
 	return toZip(generateGoClient(doc, pkgName))
 }
 
-func parseAndValidate(raw []byte) (*openapi3.T, error) {
+func parseAndValidate(ctx context.Context, raw []byte) (*openapi3.T, error) {
 	loader := openapi3.NewLoader()
 	loader.IsExternalRefsAllowed = false
 
@@ -53,7 +102,7 @@ func parseAndValidate(raw []byte) (*openapi3.T, error) {
 		return nil, fmt.Errorf("failed to parse contract: %w", err)
 	}
 
-	if err := doc.Validate(context.Background()); err != nil {
+	if err := doc.Validate(ctx); err != nil {
 		return nil, fmt.Errorf("contract failed validation: %w", err)
 	}
 
@@ -111,7 +160,7 @@ func toGoIdent(s string) string {
 
 	out := b.String()
 	if out == "" {
-		out = "Operation"
+		out = defaultOperationName
 	}
 
 	if out[0] >= '0' && out[0] <= '9' {

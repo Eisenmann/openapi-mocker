@@ -3,6 +3,7 @@ package codegen
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"io"
 	"strings"
 	"testing"
@@ -124,7 +125,7 @@ func TestHasBody(t *testing.T) {
 func TestCollectOperations(t *testing.T) {
 	t.Parallel()
 
-	doc, err := parseAndValidate([]byte(testOpenAPI))
+	doc, err := parseAndValidate(context.Background(), []byte(testOpenAPI))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -163,7 +164,7 @@ paths:
           description: OK
 `
 
-	doc, err := parseAndValidate([]byte(raw))
+	doc, err := parseAndValidate(context.Background(), []byte(raw))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -181,7 +182,7 @@ paths:
 func TestGenerateGoServer(t *testing.T) {
 	t.Parallel()
 
-	doc, err := parseAndValidate([]byte(testOpenAPI))
+	doc, err := parseAndValidate(context.Background(), []byte(testOpenAPI))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -263,7 +264,7 @@ func TestGenerateGoServer(t *testing.T) {
 func TestGenerateGoClient(t *testing.T) {
 	t.Parallel()
 
-	doc, err := parseAndValidate([]byte(testOpenAPI))
+	doc, err := parseAndValidate(context.Background(), []byte(testOpenAPI))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -567,8 +567,61 @@ function openProviderEditor(projectId) {
 
 // ---------------- Codegen tab ----------------
 
+const CODEGEN_LANGUAGES = [
+  { id: 'go', label: 'Go' },
+  { id: 'typescript', label: 'TypeScript' },
+  { id: 'python', label: 'Python' },
+  { id: 'java', label: 'Java' },
+  { id: 'rust', label: 'Rust' },
+  { id: 'csharp', label: 'C#' },
+];
+
 function renderCodegenTab(panel, project) {
   panel.innerHTML = '';
+
+  // Multi-language agent generation.
+  const langChecks = CODEGEN_LANGUAGES.map(l => {
+    const cb = el('input', { type: 'checkbox', value: l.id, checked: 'checked', style: 'width:auto;' });
+    return el('label', { style: 'margin-right:12px;' }, [cb, ' ' + l.label]);
+  });
+
+  panel.appendChild(el('div', { class: 'card' }, [
+    el('h3', {}, '🛠 Multi-Language Code Generation'),
+    el('p', { class: 'muted' }, 'Generate server/client code for multiple languages from the active contract and download a zip archive.'),
+    el('div', { class: 'row', style: 'flex-wrap:wrap;' }, langChecks),
+    el('div', { class: 'row', style: 'margin-top:8px;' }, [
+      el('button', { class: 'btn btn-primary', onclick: async () => {
+        const languages = CODEGEN_LANGUAGES.filter(l => {
+          const cb = langChecks.find(c => c.querySelector('input').value === l.id);
+          return cb.querySelector('input').checked;
+        }).map(l => l.id);
+        if (languages.length === 0) { toast('Select at least one language', 'error'); return; }
+        try {
+          const resp = await fetch(`/api/projects/${project.id}/codegen/agent`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ languages, project_name: project.name }),
+          });
+          if (!resp.ok) {
+            const text = await resp.text();
+            let msg = `Error ${resp.status}`;
+            try { msg = JSON.parse(text).error || msg; } catch (_) {}
+            throw new Error(msg);
+          }
+          const blob = await resp.blob();
+          const url = URL.createObjectURL(blob);
+          const a = el('a', { href: url, download: 'codegen.zip' });
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+          toast('codegen.zip downloaded');
+        } catch (e) { toast(e.message, 'error'); }
+      } }, 'Generate & Download ZIP'),
+    ]),
+  ]));
+
+  // Legacy Go server/client downloads.
   panel.appendChild(el('div', { class: 'card' }, [
     el('h3', {}, '🛠 Generate Go Server'),
     el('p', { class: 'muted' }, 'HTTP server skeleton (net/http) with an interface for each contract operation and a main.go stub.'),
