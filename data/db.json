@@ -5,10 +5,22 @@
       "name": "1111",
       "description": "",
       "createdAt": "2026-09-09T08:53:02.2464016Z",
-      "updatedAt": "2026-09-09T08:53:02.2464016Z"
+      "updatedAt": "2026-09-10T17:42:22.6191685Z"
     }
   },
-  "contracts": {},
+  "contracts": {
+    "289968a33a2ec45ebf965279": [
+      {
+        "id": "66aa1f992f0eeb2db7307bea",
+        "projectId": "289968a33a2ec45ebf965279",
+        "format": "yaml",
+        "raw": "openapi: 3.0.0\ninfo:\n  title: Simple User API\n  description: A basic API to manage and retrieve user information.\n  version: 1.0.0\nservers:\n  - url: https://example.com\n    description: Production server\npaths:\n  /users:\n    get:\n      summary: Get a list of users\n      description: Returns a list of all registered users in the system.\n      responses:\n        '200':\n          description: A successful response returning a list of users.\n          content:\n            application/json:\n              schema:\n                type: array\n                items:\n                  $ref: '#/components/schemas/User'\ncomponents:\n  schemas:\n    User:\n      type: object\n      required:\n        - id\n        - name\n      properties:\n        id:\n          type: integer\n          format: int64\n          example: 1\n        name:\n          type: string\n          example: \"Jane Doe\"\n        email:\n          type: string\n          format: email\n          example: \"jane.doe@example.com\"\n",
+        "version": 1,
+        "source": "manual",
+        "createdAt": "2026-09-10T17:42:22.6191685Z"
+      }
+    ]
+  },
   "mocks": {},
   "providers": {},
   "logs": []

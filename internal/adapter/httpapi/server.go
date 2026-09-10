@@ -5,17 +5,26 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
 
+	"github.com/Eisenmann/openapi-mocker/internal/agents"
 	"github.com/Eisenmann/openapi-mocker/internal/domain"
+	"github.com/Eisenmann/openapi-mocker/internal/domain/ports"
 	"github.com/Eisenmann/openapi-mocker/internal/usecase"
 )
 
 // Services is all the usecase services needed by the HTTP layer. They are
 // assembled in the composition root (cmd/server/main.go) from concrete adapters.
+// CodeGenAgentPort is the interface the HTTP layer needs from the
+// code generation agent. It is implemented by *agents.CodeGenerationAgent.
+type CodeGenAgentPort interface {
+	Execute(ctx context.Context, request *agents.AgentRequest) ([]*ports.GenerationResult, error)
+}
+
 type Services struct {
 	Projects       *usecase.ProjectService
 	Contracts      *usecase.ContractService
@@ -25,6 +34,7 @@ type Services struct {
 	GraphQLServing *usecase.GraphQLServingService
 	Codegen        *usecase.CodegenService
 	Logs           *usecase.LogService
+	CodeGenAgent   CodeGenAgentPort
 }
 
 type api struct {

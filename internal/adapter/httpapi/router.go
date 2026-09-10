@@ -12,8 +12,8 @@ import (
 // (everything else). Uses the Go 1.22 stdlib net/http.ServeMux with routes
 // in "METHOD /path/{param}" form. The router knows nothing about how the
 // services in Services are implemented — it only calls their methods.
-func NewRouter(s Services) http.Handler {
-	a := &api{s: s}
+func NewRouter(s *Services) http.Handler {
+	a := &api{s: *s}
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -59,6 +59,7 @@ func NewRouter(s Services) http.Handler {
 	// --- codegen ---.
 	mux.HandleFunc("GET /api/projects/{id}/codegen/server", a.codegenServer)
 	mux.HandleFunc("GET /api/projects/{id}/codegen/client", a.codegenClient)
+	mux.HandleFunc("POST /api/projects/{id}/codegen/agent", a.codegenAgent)
 
 	// --- logs ---.
 	mux.HandleFunc("GET /api/projects/{id}/logs", a.listLogs)

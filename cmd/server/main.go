@@ -23,8 +23,13 @@ import (
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/graphql"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/httpapi"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/llm"
+	"github.com/Eisenmann/openapi-mocker/internal/adapter/logger"
+	"github.com/Eisenmann/openapi-mocker/internal/adapter/notifier"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/openapi"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/repository/jsonstore"
+	"github.com/Eisenmann/openapi-mocker/internal/adapter/router"
+	"github.com/Eisenmann/openapi-mocker/internal/agents"
+	"github.com/Eisenmann/openapi-mocker/internal/domain/ports"
 	"github.com/Eisenmann/openapi-mocker/internal/usecase"
 )
 
@@ -43,6 +48,10 @@ func main() {
 	codeGenerator := codegen.NewGenerator() // implements usecase.CodeGenerator.
 	graphQLEngine := graphql.NewEngine()    // implements usecase.GraphQLEngine.
 
+	// ---- Multi-language code generation system ----.
+	appLogger := logger.New()
+	codeGenAgent := initCodeGenerationAgent(appLogger)
+
 	// ---- Use Cases: assembled from ports, know nothing about concrete adapters ----.
 	services := httpapi.Services{
 		Projects:       usecase.NewProjectService(store),
@@ -53,10 +62,11 @@ func main() {
 		GraphQLServing: usecase.NewGraphQLServingService(store, store, graphQLEngine),
 		Codegen:        usecase.NewCodegenService(store, codeGenerator),
 		Logs:           usecase.NewLogService(store),
+		CodeGenAgent:   codeGenAgent,
 	}
 
 	// ---- Interface Adapter: HTTP controllers + routing ----.
-	handler := httpapi.NewRouter(services)
+	handler := httpapi.NewRouter(&services)
 
 	httpServer := &http.Server{
 		Addr:              ":" + port,
@@ -83,4 +93,60 @@ func getEnv(key, def string) string {
 	}
 
 	return def
+}
+
+// initCodeGenerationAgent wires the multi-language code generation system:
+// adapters, router, usecase, and agent.
+func initCodeGenerationAgent(appLogger *logger.Logger) *agents.CodeGenerationAgent {
+	// Adapters.
+	goAdapter, err := codegen.NewGoNativeAdapter(codegen.GoConfig{
+		ModulePath:  "generated",
+		GoVersion:   "1.21",
+		TemplateDir: "./templates/go",
+	})
+	if err != nil {
+		log.Fatalf("failed to create Go adapter: %v", err)
+	}
+
+	tsAdapter := codegen.NewTypeScriptNativeAdapter()
+	pyAdapter := codegen.NewPythonNativeAdapter()
+	csAdapter := codegen.NewCSharpNativeAdapter()
+	javaAdapter := codegen.NewJavaNativeAdapter()
+	rustAdapter := codegen.NewRustNativeAdapter()
+
+	openAPIAdapter := codegen.NewOpenAPIGeneratorAdapter(
+		codegen.OpenAPIConfig{
+			CLIPath: getEnv("OPENAPI_GENERATOR_CLI", "openapi-generator-cli.jar"),
+			DefaultOptions: map[string]string{
+				"enumPropertyNaming": "UPPERCASE",
+			},
+		},
+		&codegen.OSCommandExecutor{},
+	)
+
+	cicdAdapter := codegen.NewCICDAdapter(codegen.PlatformGitHubActions)
+
+	// Router.
+	langRouter := router.NewDefaultLanguageRouter()
+
+	// UseCase.
+	adapters := []ports.CodeGeneratorPort{
+		goAdapter, tsAdapter, pyAdapter, csAdapter, javaAdapter, rustAdapter, openAPIAdapter, cicdAdapter,
+	}
+
+	useCase := usecase.NewCodeGeneratorUseCase(
+		adapters,
+		openAPIAdapter, // fallback.
+		langRouter,
+		&usecase.DefaultSchemaValidator{},
+		appLogger,
+	)
+
+	// Agent.
+	return agents.NewCodeGenerationAgent(
+		useCase,
+		&agents.DefaultGenerationPlanner{},
+		&agents.DefaultResultValidator{},
+		notifier.New(),
+	)
 }
