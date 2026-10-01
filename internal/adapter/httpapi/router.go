@@ -66,8 +66,10 @@ func NewRouter(s *Services) http.Handler {
 
 	// --- dynamic mock server ---.
 	mux.HandleFunc("POST /mock/{projectId}/graphql", a.serveGraphQL)
+	mux.HandleFunc("POST /mock/{projectId}/mcp", a.serveMCP)
 	mux.HandleFunc("GET /api/projects/{id}/graphql/schema", a.graphQLSchema)
 	mux.HandleFunc("GET /api/projects/{id}/graphql/operations", a.graphQLOperations)
+	mux.HandleFunc("GET /api/projects/{id}/mcp/tools", a.mcpTools)
 	mux.HandleFunc("/mock/{projectId}/{path...}", a.serveMock)
 	mux.HandleFunc("/mock/{projectId}", a.serveMockRoot)
 

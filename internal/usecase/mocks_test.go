@@ -420,5 +420,32 @@ func (m *mockGraphQLEngine) Execute(raw []byte, query, operationName string, var
 	return m.executeBody, m.executeErr
 }
 
+// ---------- Mock MCP engine ----------.
+
+type mockMCPEngine struct {
+	validateResult  usecase.MCPValidationResult
+	parseErr        error
+	listToolsResult []usecase.MCPTool
+	listToolsErr    error
+	executeBody     []byte
+	executeErr      error
+}
+
+func (m *mockMCPEngine) Validate(raw []byte) usecase.MCPValidationResult {
+	return m.validateResult
+}
+
+func (m *mockMCPEngine) ParseAndValidate(raw []byte) error {
+	return m.parseErr
+}
+
+func (m *mockMCPEngine) ListTools(raw []byte) ([]usecase.MCPTool, error) {
+	return m.listToolsResult, m.listToolsErr
+}
+
+func (m *mockMCPEngine) Execute(raw, req []byte, scenario string) ([]byte, error) {
+	return m.executeBody, m.executeErr
+}
+
 // errSentinel is a generic error for tests.
 var errSentinel = errors.New("sentinel error")

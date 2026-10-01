@@ -27,6 +27,8 @@ func StatusFromError(err error) int {
 		return StatusNotFound
 	case errors.Is(err, ErrNotGraphQLContract):
 		return StatusBadRequest
+	case errors.Is(err, ErrNotMCPContract):
+		return StatusBadRequest
 	default:
 		return StatusInternalServerError
 	}

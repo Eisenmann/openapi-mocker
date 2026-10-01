@@ -41,8 +41,18 @@ desktop, in Docker, and in Kubernetes.
    introspection queries return a clear error pointing at the SDL export
    endpoint. List fields honor a `limit` argument (clamped to a maximum of 20
    items); without one, a small default of 2 items is returned.
-9. Go server and Go client code generation in one click (download as zip).
-10. Additional features:
+9. **MCP contracts**: publish a JSON MCP server manifest (a root `mcpServer`
+   block with `name`, `version` and `tools`; see `examples/simple-mcp-server.json`)
+   instead of an OpenAPI document; the mock server then speaks the MCP wire
+   protocol (JSON-RPC 2.0) at `POST /mock/{id}/mcp`: `initialize`, `ping`,
+   `tools/list` and `tools/call` with per-tool mock responses. Response
+   scenarios work like REST mocking: send `X-Mock-Scenario` to pick among
+   the tool declared `mockResponses`. A mock that is not already an MCP
+   result (no `content`/`structuredContent`/`isError`) is wrapped into a valid
+   one. JSON-RPC batches are supported and notifications get `202`. An external manifest layout
+   (`serverInfo` + `tools` at the root) is accepted as well.
+10. Go server and Go client code generation in one click (download as zip).
+11. Additional features:
    - **Response scenarios** (`X-Mock-Scenario`) — multiple response variants
      for one endpoint (happy path, empty, error…), selected by a header.
    - **Delay simulation and chaos error injection** (`delayMs`,
@@ -92,17 +102,19 @@ kubectl -n openapi-mocker port-forward svc/openapi-mocker 8080:80
 |---|---|
 | `GET/POST /api/projects` | list / create project |
 | `GET/DELETE /api/projects/{id}` | project |
-| `GET/POST /api/projects/{id}/contract` | get / publish active contract (JSON body may include `format`: `graphql`/`yaml`/`json`; auto-detected when omitted) |
+| `GET/POST /api/projects/{id}/contract` | get / publish active contract (JSON body may include `format`: `graphql`/`yaml`/`json`/`mcp`; auto-detected when omitted) |
 | `GET /api/projects/{id}/contract/versions` | version history |
 | `GET /api/projects/{id}/contract/versions/{version}` | contents of a specific version |
 | `POST /api/projects/{id}/contract/versions/{version}/rollback` | roll back to a version (re-publishes it) |
 | `GET /api/projects/{id}/contract/diff?from=X&to=Y` | line-by-line diff of two versions (to defaults to current) |
-| `POST /api/projects/{id}/contract/validate` | validate contract (OpenAPI or GraphQL) |
+| `POST /api/projects/{id}/contract/validate` | validate contract (OpenAPI, GraphQL or MCP) |
 | `POST /api/projects/{id}/contract/generate` | generate contract via LLM |
 | `GET /api/projects/{id}/endpoints` | list contract operations (HTTP endpoints or GraphQL fields) |
 | `GET /api/projects/{id}/graphql/schema` | SDL export of the published GraphQL contract |
 | `GET /api/projects/{id}/graphql/operations` | GraphQL root fields (query/mutation/subscription) |
 | `POST /mock/{id}/graphql` | execute a GraphQL query (JSON body, gets mock data) |
+| `POST /mock/{id}/mcp` | MCP mock endpoint (JSON-RPC 2.0) |
+| `GET /api/projects/{id}/mcp/tools` | list tools of the published MCP manifest |
 | `GET/POST /api/projects/{id}/mocks` | list / create mock rules |
 | `PUT/DELETE /api/mocks/{mockId}` | edit / delete a mock rule |
 | `POST /api/projects/{id}/mocks/generate` | generate mock body via LLM |
@@ -117,6 +129,14 @@ kubectl -n openapi-mocker port-forward svc/openapi-mocker 8080:80
 
 ```bash
 curl -H "X-Mock-Scenario: error" http://localhost:8080/mock/<projectId>/users/1
+```
+
+MCP tool call via the mock JSON-RPC endpoint:
+
+```bash
+curl -X POST http://localhost:8080/mock/<projectId>/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_forecast","arguments":{"city":"Berlin"}}}\x27
 ```
 
 ## Known limitations / roadmap

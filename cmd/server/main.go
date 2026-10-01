@@ -24,6 +24,7 @@ import (
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/httpapi"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/llm"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/logger"
+	"github.com/Eisenmann/openapi-mocker/internal/adapter/mcp"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/notifier"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/openapi"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/repository/jsonstore"
@@ -47,6 +48,7 @@ func main() {
 	llmGateway := llm.NewGateway()          // implements usecase.LLMGateway.
 	codeGenerator := codegen.NewGenerator() // implements usecase.CodeGenerator.
 	graphQLEngine := graphql.NewEngine()    // implements usecase.GraphQLEngine.
+	mcpEngine := mcp.NewEngine()            // implements usecase.MCPEngine.
 
 	// ---- Multi-language code generation system ----.
 	appLogger := logger.New()
@@ -55,11 +57,12 @@ func main() {
 	// ---- Use Cases: assembled from ports, know nothing about concrete adapters ----.
 	services := httpapi.Services{
 		Projects:       usecase.NewProjectService(store),
-		Contracts:      usecase.NewContractService(store, store, contractEngine, llmGateway),
+		Contracts:      usecase.NewContractService(store, store, contractEngine, llmGateway, usecase.FormatValidators{GraphQL: graphQLEngine, MCP: mcpEngine}),
 		Mocks:          usecase.NewMockService(store, store, store, contractEngine, llmGateway),
 		Providers:      usecase.NewProviderService(store, llmGateway),
 		MockServing:    usecase.NewMockServingService(store, store, store, contractEngine),
 		GraphQLServing: usecase.NewGraphQLServingService(store, store, graphQLEngine),
+		MCPServing:     usecase.NewMCPServingService(store, store, mcpEngine),
 		Codegen:        usecase.NewCodegenService(store, codeGenerator),
 		Logs:           usecase.NewLogService(store),
 		CodeGenAgent:   codeGenAgent,
