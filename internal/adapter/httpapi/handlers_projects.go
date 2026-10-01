@@ -40,11 +40,12 @@ func (a *api) getProject(w http.ResponseWriter, r *http.Request) {
 }
 
 // updateProject changes project settings. Only the fields present in the
-// JSON body are modified; currently that is validationMode (off, warn or
-// enforce).
+// JSON body are modified: validationMode (off, warn or enforce) and stateMode
+// (off, memory or persisted).
 func (a *api) updateProject(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ValidationMode *domain.ValidationMode `json:"validationMode"`
+		StateMode      *domain.StateMode      `json:"stateMode"`
 	}
 
 	err := readJSON(r, &body)
@@ -55,18 +56,23 @@ func (a *api) updateProject(w http.ResponseWriter, r *http.Request) {
 
 	id := r.PathValue("id")
 
-	if body.ValidationMode == nil {
-		a.getProject(w, r)
-		return
+	if body.ValidationMode != nil {
+		_, err = a.s.Projects.SetValidationMode(id, *body.ValidationMode)
+		if err != nil {
+			writeError(w, usecase.StatusFromError(err), err)
+			return
+		}
 	}
 
-	p, err := a.s.Projects.SetValidationMode(id, *body.ValidationMode)
-	if err != nil {
-		writeError(w, usecase.StatusFromError(err), err)
-		return
+	if body.StateMode != nil {
+		_, err = a.s.Projects.SetStateMode(id, *body.StateMode)
+		if err != nil {
+			writeError(w, usecase.StatusFromError(err), err)
+			return
+		}
 	}
 
-	writeJSON(w, http.StatusOK, p)
+	a.getProject(w, r)
 }
 
 func (a *api) deleteProject(w http.ResponseWriter, r *http.Request) {

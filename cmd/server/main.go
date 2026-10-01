@@ -28,6 +28,7 @@ import (
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/notifier"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/openapi"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/repository/jsonstore"
+	"github.com/Eisenmann/openapi-mocker/internal/adapter/repository/statestore"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/router"
 	"github.com/Eisenmann/openapi-mocker/internal/agents"
 	"github.com/Eisenmann/openapi-mocker/internal/domain/ports"
@@ -56,15 +57,25 @@ func main() {
 
 	// ---- Use Cases: assembled from ports, know nothing about concrete adapters ----.
 	validators := usecase.FormatValidators{GraphQL: graphQLEngine, MCP: mcpEngine}
+
+	stateStore, err := statestore.New(dataDir) // implements usecase.StateStore.
+	if err != nil {
+		log.Fatalf("failed to initialize state store (%s): %v", dataDir, err)
+	}
+
+	stateService := usecase.NewStateService(stateStore, store, contractEngine)
 	contractService := usecase.NewContractService(store, store, contractEngine, llmGateway, validators)
 	services := httpapi.Services{
-		Projects:       usecase.NewProjectService(store),
-		Contracts:      contractService,
-		Mocks:          usecase.NewMockService(store, store, store, contractEngine, llmGateway),
-		Providers:      usecase.NewProviderService(store, llmGateway),
-		MockServing:    usecase.NewMockServingService(store, store, store, contractEngine, usecase.WithProjects(store)),
+		Projects:  usecase.NewProjectService(store),
+		Contracts: contractService,
+		Mocks:     usecase.NewMockService(store, store, store, contractEngine, llmGateway),
+		Providers: usecase.NewProviderService(store, llmGateway),
+		MockServing: usecase.NewMockServingService(
+			store, store, store, contractEngine, usecase.WithProjects(store), usecase.WithState(stateService),
+		),
 		GraphQLServing: usecase.NewGraphQLServingService(store, store, graphQLEngine),
 		MCPServing:     usecase.NewMCPServingService(store, store, mcpEngine, usecase.WithProjects(store)),
+		State:          stateService,
 		Codegen:        usecase.NewCodegenService(store, codeGenerator),
 		Logs:           usecase.NewLogService(store),
 		CodeGenAgent:   codeGenAgent,

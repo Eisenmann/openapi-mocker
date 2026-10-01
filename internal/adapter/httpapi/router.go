@@ -49,6 +49,12 @@ func NewRouter(s *Services) http.Handler {
 	mux.HandleFunc("PUT /api/mocks/{mockId}", a.updateMock)
 	mux.HandleFunc("DELETE /api/mocks/{mockId}", a.deleteMock)
 
+	// --- stateful mock data ---.
+	mux.HandleFunc("GET /api/projects/{id}/state", a.getState)
+	mux.HandleFunc("DELETE /api/projects/{id}/state", a.resetState)
+	mux.HandleFunc("PUT /api/projects/{id}/state/{collection...}", a.seedState)
+	mux.HandleFunc("DELETE /api/projects/{id}/state/{collection...}", a.resetState)
+
 	// --- LLM provider ---.
 	mux.HandleFunc("GET /api/llm-providers", a.listProvidersGlobal)
 	mux.HandleFunc("POST /api/llm-providers", a.createProvider)

@@ -13,6 +13,7 @@ type ServingOption func(*servingConfig)
 
 type servingConfig struct {
 	projects ProjectGetter
+	state    *StateService
 }
 
 // WithProjects enables per-project request validation: the serving service
@@ -20,6 +21,12 @@ type servingConfig struct {
 // Without it, requests are never validated.
 func WithProjects(projects ProjectGetter) ServingOption {
 	return func(c *servingConfig) { c.projects = projects }
+}
+
+// WithState enables stateful mocks: for projects whose stateMode is on, CRUD
+// operations that no mock rule covers read and write the project's collections.
+func WithState(state *StateService) ServingOption {
+	return func(c *servingConfig) { c.state = state }
 }
 
 func newServingConfig(opts []ServingOption) servingConfig {

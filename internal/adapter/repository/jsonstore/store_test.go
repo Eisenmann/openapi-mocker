@@ -432,3 +432,35 @@ func TestStore_SetValidationMode(t *testing.T) {
 		t.Errorf("mode must persist, got %+v, %v", got, err)
 	}
 }
+
+func TestStore_SetStateMode(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	s, err := jsonstore.New(dir)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+
+	p := s.Create("P", "")
+
+	updated, err := s.SetStateMode(p.ID, domain.StatePersisted)
+	if err != nil || updated.StateMode != domain.StatePersisted {
+		t.Fatalf("SetStateMode: %+v, %v", updated, err)
+	}
+
+	if _, err := s.SetStateMode("missing", domain.StateMemory); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("unknown project: want ErrNotFound, got %v", err)
+	}
+
+	reloaded, err := jsonstore.New(dir)
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+
+	got, err := reloaded.Get(p.ID)
+	if err != nil || got.StateMode != domain.StatePersisted {
+		t.Errorf("mode must persist, got %+v, %v", got, err)
+	}
+}

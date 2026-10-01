@@ -70,6 +70,24 @@ desktop, in Docker, and in Kubernetes.
      the `tools/call` result as `_meta["openapi-mocker/validationWarnings"]`);
      `enforce` answers `400` with `{"error": ..., "violations": [...]}` (REST)
      or JSON-RPC `-32602` with the violations in `error.data` (MCP). Security schemes are not checked.
+   - **Stateful mocks** — let `POST`, `PUT`, `PATCH` and `DELETE` change the
+     data that later `GET`s return, so a "create then fetch" flow can be
+     tested. Set per project (UI dropdown or `PATCH /api/projects/{id}` with
+     `{"stateMode": "off|memory|persisted"}`; default `off`). `memory` keeps
+     the data until restart, `persisted` also saves it to `state.json` in the
+     data directory. REST conventions are inferred from the contract's paths:
+     `GET /users` lists the collection, `POST /users` creates a resource (the
+     `id` comes from the body, or is a sequential integer, or a UUID when the
+     contract declares a string `id`; a duplicate id is `409`),
+     `GET|PUT|PATCH|DELETE /users/{id}` read, replace, merge into or remove one
+     (`404` when it does not exist). Success codes come from the contract
+     (e.g. `201` for create, `204` for delete). Collections start empty;
+     `GET /api/projects/{id}/state` shows them, `PUT
+     /api/projects/{id}/state/users` seeds one from a JSON array, and `DELETE
+     /api/projects/{id}/state[/users]` resets all or one. An explicit mock rule
+     for an operation always wins over state, and operations that do not follow
+     the conventions stay static. Query parameters (filters, paging) are not
+     applied to lists.
    - **Request log** to the mock server (method/path/status/time) right in the UI.
    - **"Try it" in the browser** — sending a request to the mock without
      Postman/curl.
@@ -112,7 +130,7 @@ kubectl -n openapi-mocker port-forward svc/openapi-mocker 8080:80
 | Method / Path | Purpose |
 |---|---|
 | `GET/POST /api/projects` | list / create project |
-| `GET/PATCH/DELETE /api/projects/{id}` | project (PATCH changes `validationMode`) |
+| `GET/PATCH/DELETE /api/projects/{id}` | project (PATCH changes `validationMode` and `stateMode`) |
 | `GET/POST /api/projects/{id}/contract` | get / publish active contract (JSON body may include `format`: `graphql`/`yaml`/`json`/`mcp`; auto-detected when omitted) |
 | `GET /api/projects/{id}/contract/versions` | version history |
 | `GET /api/projects/{id}/contract/versions/{version}` | contents of a specific version |
@@ -120,6 +138,9 @@ kubectl -n openapi-mocker port-forward svc/openapi-mocker 8080:80
 | `GET /api/projects/{id}/contract/diff?from=X&to=Y` | line-by-line diff of two versions (to defaults to current) |
 | `POST /api/projects/{id}/contract/validate` | validate contract (OpenAPI, GraphQL or MCP) |
 | `POST /api/projects/{id}/contract/generate` | generate contract via LLM |
+| `GET /api/projects/{id}/state` | collections of the stateful mock data |
+| `PUT /api/projects/{id}/state/{collection}` | seed a collection from a JSON array of objects |
+| `DELETE /api/projects/{id}/state[/{collection}]` | reset all collections, or one |
 | `GET /api/projects/{id}/endpoints` | list contract operations (HTTP endpoints or GraphQL fields) |
 | `GET /api/projects/{id}/graphql/schema` | SDL export of the published GraphQL contract |
 | `GET /api/projects/{id}/graphql/operations` | GraphQL root fields (query/mutation/subscription) |
