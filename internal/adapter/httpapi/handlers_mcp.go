@@ -21,6 +21,7 @@ func (a *api) serveMCP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	defer r.Body.Close()
+
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxMCPBodyBytes))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)

@@ -157,7 +157,8 @@ func describeMCPRequest(body []byte, scenario string) string {
 
 	if len(trimmed) > 0 && trimmed[0] == '[' {
 		var items []json.RawMessage
-		if err := json.Unmarshal(trimmed, &items); err != nil {
+		err := json.Unmarshal(trimmed, &items)
+		if err != nil {
 			return ""
 		}
 
@@ -169,7 +170,8 @@ func describeMCPRequest(body []byte, scenario string) string {
 				Name string `json:"name"`
 			} `json:"params"`
 		}
-		if err := json.Unmarshal(trimmed, &r); err != nil || r.Method == "" {
+		err := json.Unmarshal(trimmed, &r)
+		if err != nil || r.Method == "" {
 			return ""
 		}
 
@@ -196,7 +198,8 @@ func hasJSONRPCError(resp []byte) bool {
 
 	var items []json.RawMessage
 	if trimmed[0] == '[' {
-		if err := json.Unmarshal(trimmed, &items); err != nil {
+		err := json.Unmarshal(trimmed, &items)
+		if err != nil {
 			return true
 		}
 	} else {
@@ -207,7 +210,8 @@ func hasJSONRPCError(resp []byte) bool {
 		var r struct {
 			Error json.RawMessage `json:"error"`
 		}
-		if err := json.Unmarshal(item, &r); err == nil && len(r.Error) > 0 && string(r.Error) != "null" {
+		err := json.Unmarshal(item, &r)
+		if err == nil && len(r.Error) > 0 && string(r.Error) != "null" {
 			return true
 		}
 	}

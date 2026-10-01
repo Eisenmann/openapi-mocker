@@ -65,6 +65,19 @@ func NewRouter(s *Services) http.Handler {
 	mux.HandleFunc("GET /api/projects/{id}/logs", a.listLogs)
 
 	// --- dynamic mock server ---.
+	a.registerMockServerRoutes(mux)
+
+	// --- web interface (SPA) ---.
+	fileServer := http.FileServer(http.FS(webui.FS()))
+	mux.Handle("/", spaFallback(fileServer))
+
+	return withCORS(mux)
+}
+
+// registerMockServerRoutes registers the dynamic mock endpoints (REST,
+// GraphQL, MCP) and the GraphQL/MCP introspection endpoints used by the UI.
+// The catch-all /mock/{projectId}/{path...} route is registered last.
+func (a *api) registerMockServerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /mock/{projectId}/graphql", a.serveGraphQL)
 	mux.HandleFunc("POST /mock/{projectId}/mcp", a.serveMCP)
 	mux.HandleFunc("GET /api/projects/{id}/graphql/schema", a.graphQLSchema)
@@ -72,12 +85,6 @@ func NewRouter(s *Services) http.Handler {
 	mux.HandleFunc("GET /api/projects/{id}/mcp/tools", a.mcpTools)
 	mux.HandleFunc("/mock/{projectId}/{path...}", a.serveMock)
 	mux.HandleFunc("/mock/{projectId}", a.serveMockRoot)
-
-	// --- web interface (SPA) ---.
-	fileServer := http.FileServer(http.FS(webui.FS()))
-	mux.Handle("/", spaFallback(fileServer))
-
-	return withCORS(mux)
 }
 
 func spaFallback(fs http.Handler) http.Handler {

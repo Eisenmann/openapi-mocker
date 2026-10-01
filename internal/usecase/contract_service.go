@@ -104,7 +104,8 @@ func (s *ContractService) Publish(projectID, raw, source string) (*domain.Contra
 
 	format := detectFormat(raw)
 
-	if err := s.validateFormat(format, raw); err != nil {
+	err := s.validateFormat(format, raw)
+	if err != nil {
 		return nil, err
 	}
 

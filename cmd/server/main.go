@@ -55,9 +55,11 @@ func main() {
 	codeGenAgent := initCodeGenerationAgent(appLogger)
 
 	// ---- Use Cases: assembled from ports, know nothing about concrete adapters ----.
+	validators := usecase.FormatValidators{GraphQL: graphQLEngine, MCP: mcpEngine}
+	contractService := usecase.NewContractService(store, store, contractEngine, llmGateway, validators)
 	services := httpapi.Services{
 		Projects:       usecase.NewProjectService(store),
-		Contracts:      usecase.NewContractService(store, store, contractEngine, llmGateway, usecase.FormatValidators{GraphQL: graphQLEngine, MCP: mcpEngine}),
+		Contracts:      contractService,
 		Mocks:          usecase.NewMockService(store, store, store, contractEngine, llmGateway),
 		Providers:      usecase.NewProviderService(store, llmGateway),
 		MockServing:    usecase.NewMockServingService(store, store, store, contractEngine),

@@ -28,7 +28,8 @@ func IsMCP(raw string) bool {
 
 	// A malformed JSON document is not detected as MCP; the engine's
 	// ParseAndValidate will report the syntax error to the user instead.
-	if err := json.Unmarshal([]byte(trimmed), &probe); err != nil {
+	err := json.Unmarshal([]byte(trimmed), &probe)
+	if err != nil {
 		return false
 	}
 

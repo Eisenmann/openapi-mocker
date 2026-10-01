@@ -7,10 +7,14 @@ package mcp
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/Eisenmann/openapi-mocker/internal/usecase"
 )
+
+// jsonrpcVersion is the only JSON-RPC protocol version spoken by the mock.
+const jsonrpcVersion = "2.0"
 
 // JSON-RPC 2.0 error codes (subset used by the mock server).
 const (
@@ -36,6 +40,7 @@ func negotiateProtocolVersion(params json.RawMessage) string {
 	if len(params) > 0 {
 		_ = json.Unmarshal(params, &p)
 	}
+
 	for _, v := range supportedProtocolVersions {
 		if v == p.ProtocolVersion {
 			return v
@@ -44,6 +49,14 @@ func negotiateProtocolVersion(params json.RawMessage) string {
 
 	return supportedProtocolVersions[0]
 }
+
+// Static manifest validation errors (wrapped with details where useful).
+var (
+	errNotManifest      = errors.New("no mcpServer block and no tools array: not an MCP server manifest")
+	errNoTools          = errors.New("manifest declares no tools")
+	errToolNameRequired = errors.New("tool name is required")
+	errDuplicateTool    = errors.New("duplicate tool name")
+)
 
 // manifest is the parsed form of an MCP contract. Two layouts are accepted:
 //   - mcpServer root: the canonical openapi-mocker layout
@@ -95,11 +108,14 @@ type outerShape struct {
 // empty tool names, non-object inputSchema.
 func parse(raw []byte) (*manifest, error) {
 	var outer outerShape
-	if err := json.Unmarshal(raw, &outer); err != nil {
+
+	err := json.Unmarshal(raw, &outer)
+	if err != nil {
 		return nil, fmt.Errorf("invalid JSON: %w", err)
 	}
 
-	m := &manifest{}
+	m := &manifest{Name: "", Version: "", Tools: nil}
+
 	switch {
 	case outer.MCPServer != nil:
 		m.Name = outer.MCPServer.Name
@@ -111,23 +127,27 @@ func parse(raw []byte) (*manifest, error) {
 			m.Name = outer.ServerInfo.Name
 			m.Version = outer.ServerInfo.Version
 		}
+
 		m.Tools = outer.Tools
 	default:
-		return nil, fmt.Errorf("no mcpServer block and no tools array: not an MCP server manifest")
+		return nil, errNotManifest
 	}
 
 	if len(m.Tools) == 0 {
-		return nil, fmt.Errorf("manifest declares no tools")
+		return nil, errNoTools
 	}
 
 	seen := map[string]bool{}
+
 	for i, t := range m.Tools {
 		if t.Name == "" {
-			return nil, fmt.Errorf("tool %d: name is required", i)
+			return nil, fmt.Errorf("tool %d: %w", i, errToolNameRequired)
 		}
+
 		if seen[t.Name] {
-			return nil, fmt.Errorf("tool %q: duplicate name", t.Name)
+			return nil, fmt.Errorf("tool %q: %w", t.Name, errDuplicateTool)
 		}
+
 		seen[t.Name] = true
 	}
 
@@ -139,10 +159,10 @@ func parse(raw []byte) (*manifest, error) {
 func (e *Engine) Validate(raw []byte) usecase.MCPValidationResult {
 	m, err := parse(raw)
 	if err != nil {
-		return usecase.MCPValidationResult{Valid: false, Errors: []string{err.Error()}}
+		return usecase.MCPValidationResult{Valid: false, Errors: []string{err.Error()}, ToolCount: 0}
 	}
 
-	return usecase.MCPValidationResult{Valid: true, ToolCount: len(m.Tools)}
+	return usecase.MCPValidationResult{Valid: true, Errors: nil, ToolCount: len(m.Tools)}
 }
 
 // ParseAndValidate is the strict variant used at publish time.
@@ -169,6 +189,7 @@ func (m *manifest) tools() []usecase.MCPTool {
 		if len(schema) == 0 {
 			schema = json.RawMessage(`{"type":"object"}`)
 		}
+
 		tools = append(tools, usecase.MCPTool{
 			Name:        t.Name,
 			Description: t.Description,
@@ -221,10 +242,12 @@ func respond(id json.RawMessage, result any) ([]byte, error) {
 	if isNotification(id) {
 		return nil, nil
 	}
-	out, err := json.Marshal(jsonrpcResponse{JSONRPC: "2.0", ID: id, Result: mustMarshal(result)})
+
+	out, err := json.Marshal(jsonrpcResponse{JSONRPC: jsonrpcVersion, ID: id, Result: mustMarshal(result), Error: nil})
 	if err != nil {
 		return nil, fmt.Errorf("marshal response: %w", err)
 	}
+
 	return out, nil
 }
 
@@ -241,8 +264,9 @@ func respondErr(id json.RawMessage, code int, msg string) ([]byte, error) {
 // the notification rule: JSON-RPC 2.0 requires a response (with id null) even
 // for requests that could not be parsed, where no id could be extracted.
 func marshalErr(id json.RawMessage, code int, msg string) ([]byte, error) {
-	errObj := &jsonrpcError{Code: code, Message: msg}
-	out, err := json.Marshal(jsonrpcResponse{JSONRPC: "2.0", ID: id, Error: errObj})
+	errObj := &jsonrpcError{Code: code, Message: msg, Data: nil}
+
+	out, err := json.Marshal(jsonrpcResponse{JSONRPC: jsonrpcVersion, ID: id, Result: nil, Error: errObj})
 	if err != nil {
 		return nil, fmt.Errorf("marshal error response: %w", err)
 	}
@@ -256,6 +280,7 @@ func mustMarshal(v any) json.RawMessage {
 	if err != nil {
 		return json.RawMessage("null")
 	}
+
 	return b
 }
 
@@ -283,9 +308,12 @@ func (e *Engine) Execute(raw, req []byte, scenario string) ([]byte, error) {
 // independently and the non-notification responses are returned as an array.
 func (e *Engine) executeBatch(m *manifest, req []byte, scenario string) ([]byte, error) {
 	var items []json.RawMessage
-	if err := json.Unmarshal(req, &items); err != nil {
+
+	err := json.Unmarshal(req, &items)
+	if err != nil {
 		return marshalErr(json.RawMessage("null"), codeParseError, "invalid JSON payload")
 	}
+
 	if len(items) == 0 {
 		return marshalErr(json.RawMessage("null"), codeInvalidRequest, "empty batch")
 	}
@@ -296,10 +324,12 @@ func (e *Engine) executeBatch(m *manifest, req []byte, scenario string) ([]byte,
 		if err != nil {
 			return nil, err
 		}
+
 		if out != nil {
 			responses = append(responses, out)
 		}
 	}
+
 	if len(responses) == 0 {
 		return nil, nil
 	}
@@ -315,50 +345,69 @@ func (e *Engine) executeBatch(m *manifest, req []byte, scenario string) ([]byte,
 // executeOne answers a single JSON-RPC request object.
 func (e *Engine) executeOne(m *manifest, req []byte, scenario string) ([]byte, error) {
 	var r jsonrpcRequest
-	if err := json.Unmarshal(req, &r); err != nil {
+
+	err := json.Unmarshal(req, &r)
+	if err != nil {
 		return marshalErr(json.RawMessage("null"), codeParseError, "invalid JSON payload")
 	}
-	if r.JSONRPC != "2.0" {
+
+	if r.JSONRPC != jsonrpcVersion {
 		return marshalErr(idOrNull(r.ID), codeInvalidRequest, `invalid request: jsonrpc must be "2.0"`)
 	}
+
 	if r.Method == "" {
 		return marshalErr(idOrNull(r.ID), codeInvalidRequest, "invalid request: method is required")
 	}
 
 	switch r.Method {
 	case "initialize":
-		return respond(r.ID, map[string]any{
-			"protocolVersion": negotiateProtocolVersion(r.Params),
-			"capabilities":    map[string]any{"tools": map[string]any{"listChanged": false}},
-			"serverInfo":      map[string]any{"name": orDefault(m.Name, "mock-mcp-server"), "version": orDefault(m.Version, "1.0.0")},
-		})
+		return respond(r.ID, initializeResult(m, r.Params))
 	case "ping":
 		return respond(r.ID, map[string]any{})
 	case "tools/list":
 		return respond(r.ID, map[string]any{"tools": m.tools()})
 	case "tools/call":
-		var p struct {
-			Name      string          `json:"name"`
-			Arguments json.RawMessage `json:"arguments"`
-		}
-		if err := json.Unmarshal(r.Params, &p); err != nil {
-			return respondErr(r.ID, codeInvalidParams, "tools/call requires params.name")
-		}
-		if p.Name == "" {
-			return respondErr(r.ID, codeInvalidParams, "tools/call requires params.name")
-		}
-		tool, ok := m.findTool(p.Name)
-		if !ok {
-			return respondErr(r.ID, codeInvalidParams, "unknown tool: "+p.Name)
-		}
-		result, ok := tool.mockResponse(scenario)
-		if !ok {
-			return respondErr(r.ID, codeInternalError, "no mock response configured for tool: "+p.Name)
-		}
-		return respond(r.ID, result)
+		return callTool(m, &r, scenario)
 	default:
 		return respondErr(r.ID, codeMethodNotFound, "method not found: "+r.Method)
 	}
+}
+
+// initializeResult builds the result of the initialize request.
+func initializeResult(m *manifest, params json.RawMessage) map[string]any {
+	return map[string]any{
+		"protocolVersion": negotiateProtocolVersion(params),
+		"capabilities":    map[string]any{"tools": map[string]any{"listChanged": false}},
+		"serverInfo": map[string]any{
+			"name":    orDefault(m.Name, "mock-mcp-server"),
+			"version": orDefault(m.Version, "1.0.0"),
+		},
+	}
+}
+
+// callTool answers a tools/call request from the tool's mock responses.
+func callTool(m *manifest, r *jsonrpcRequest, scenario string) ([]byte, error) {
+	var p struct {
+		Name      string          `json:"name"`
+		Arguments json.RawMessage `json:"arguments"`
+	}
+
+	err := json.Unmarshal(r.Params, &p)
+	if err != nil || p.Name == "" {
+		return respondErr(r.ID, codeInvalidParams, "tools/call requires params.name")
+	}
+
+	tool, ok := m.findTool(p.Name)
+	if !ok {
+		return respondErr(r.ID, codeInvalidParams, "unknown tool: "+p.Name)
+	}
+
+	result, ok := tool.mockResponse(scenario)
+	if !ok {
+		return respondErr(r.ID, codeInternalError, "no mock response configured for tool: "+p.Name)
+	}
+
+	return respond(r.ID, result)
 }
 
 // findTool returns the tool with the given name.
@@ -368,7 +417,8 @@ func (m *manifest) findTool(name string) (manifestTool, bool) {
 			return t, true
 		}
 	}
-	return manifestTool{}, false
+
+	return manifestTool{Name: "", Description: "", InputSchema: nil, MockResponses: nil}, false
 }
 
 // mockResponse resolves the mock result for the scenario. The lookup order
@@ -385,16 +435,19 @@ func (t *manifestTool) mockResponse(scenario string) (map[string]any, bool) {
 			}
 		}
 	}
+
 	if raw, ok := t.MockResponses["default"]; ok {
 		if res, ok := decodeMock(raw); ok {
 			return res, true
 		}
 	}
+
 	if scenario == "" && len(t.MockResponses) == 1 {
 		for _, raw := range t.MockResponses {
 			return decodeMock(raw)
 		}
 	}
+
 	return nil, false
 }
 
@@ -407,19 +460,25 @@ func decodeMock(raw json.RawMessage) (map[string]any, bool) {
 	if len(raw) == 0 {
 		return nil, false
 	}
+
 	var v any
-	if err := json.Unmarshal(raw, &v); err != nil || v == nil {
+
+	err := json.Unmarshal(raw, &v)
+	if err != nil || v == nil {
 		return nil, false
 	}
+
 	if obj, ok := v.(map[string]any); ok {
 		if isCallToolResult(obj) {
 			return obj, true
 		}
 	}
+
 	b, err := json.Marshal(v)
 	if err != nil {
 		return nil, false
 	}
+
 	res := map[string]any{"content": []any{map[string]any{"type": "text", "text": string(b)}}}
 	if obj, ok := v.(map[string]any); ok {
 		res["structuredContent"] = obj
@@ -444,5 +503,6 @@ func orDefault(s, fallback string) string {
 	if s == "" {
 		return fallback
 	}
+
 	return s
 }
