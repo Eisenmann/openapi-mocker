@@ -52,6 +52,12 @@ type MCPEngine interface {
 	// manifest itself failed to load - an infrastructure failure the
 	// handler maps to an HTTP error.
 	Execute(raw, req []byte, scenario string) ([]byte, error)
+	// ExecuteValidated is Execute plus request validation: the arguments of
+	// every tools/call are checked against the tool's inputSchema and the
+	// problems are returned as violations. With enforce set, an invalid call
+	// is answered with a JSON-RPC invalid-params error (-32602) instead of
+	// the mock response; without it the mock is served regardless.
+	ExecuteValidated(raw, req []byte, scenario string, enforce bool) (resp []byte, violations []string, err error)
 }
 
 // MCPServingService serves mock MCP responses for MCP contracts. Like
@@ -61,39 +67,62 @@ type MCPServingService struct {
 	contracts ContractRepository
 	logs      LogRepository
 	engine    MCPEngine
+	cfg       servingConfig
 }
 
 func NewMCPServingService(
 	contracts ContractRepository,
 	logs LogRepository,
 	engine MCPEngine,
+	opts ...ServingOption,
 ) *MCPServingService {
-	return &MCPServingService{contracts: contracts, logs: logs, engine: engine}
+	return &MCPServingService{contracts: contracts, logs: logs, engine: engine, cfg: newServingConfig(opts)}
+}
+
+// MCPResponse is the outcome of serving one MCP request.
+type MCPResponse struct {
+	// Body is the JSON-RPC response; nil for a notification (no body).
+	Body []byte
+	// Violations lists tools/call argument problems found by request
+	// validation (warn and enforce modes).
+	Violations []string
+	// Rejected is set when enforce mode answered with an invalid-params error
+	// instead of the mock; otherwise the violations were only warnings.
+	Rejected bool
 }
 
 // Serve handles one JSON-RPC 2.0 request and returns the mock JSON response.
 // A nil body with a nil error means the request was a JSON-RPC notification
 // (e.g. "notifications/initialized") and must not receive a response body.
 func (s *MCPServingService) Serve(projectID string, body []byte, scenario string) ([]byte, error) {
+	resp, err := s.Handle(projectID, body, scenario)
+
+	return resp.Body, err
+}
+
+// Handle is Serve plus the request-validation outcome. tools/call arguments
+// are validated against the tool's inputSchema when the project's validation
+// mode is warn or enforce.
+func (s *MCPServingService) Handle(projectID string, body []byte, scenario string) (MCPResponse, error) {
 	start := time.Now()
+	rule := describeMCPRequest(body, scenario)
 
 	raw, err := s.getMCP(projectID)
 	if err != nil {
-		code := StatusFromError(err)
-		s.logResult(projectID, code, describeMCPRequest(body, scenario), false, start)
+		s.logResult(projectID, &mcpOutcome{status: StatusFromError(err), rule: rule}, start)
 
-		return nil, err
+		return MCPResponse{}, err
 	}
 
-	rule := describeMCPRequest(body, scenario)
+	mode := s.cfg.validationMode(projectID)
 
-	resp, err := s.engine.Execute([]byte(raw), body, scenario)
+	resp, violations, err := s.execute(mode, raw, body, scenario)
 	if err != nil {
 		// Only manifest-level failures reach this point; request-level
 		// problems are JSON-RPC error responses produced by the engine.
-		s.logResult(projectID, StatusInternalServerError, rule, false, start)
+		s.logResult(projectID, &mcpOutcome{status: StatusInternalServerError, rule: rule}, start)
 
-		return nil, err
+		return MCPResponse{}, err
 	}
 
 	// A notification gets no body (HTTP 202); a JSON-RPC error response is
@@ -103,9 +132,29 @@ func (s *MCPServingService) Serve(projectID string, body []byte, scenario string
 		status = StatusAccepted
 	}
 
-	s.logResult(projectID, status, rule, !hasJSONRPCError(resp), start)
+	s.logResult(projectID, &mcpOutcome{
+		status: status, rule: rule, matched: !hasJSONRPCError(resp), violations: violations,
+	}, start)
 
-	return resp, nil
+	return MCPResponse{
+		Body:       resp,
+		Violations: violations,
+		Rejected:   mode == domain.ValidationEnforce && len(violations) > 0,
+	}, nil
+}
+
+// execute runs the request through the engine, validating it when the
+// project's validation mode asks for that.
+func (s *MCPServingService) execute(
+	mode domain.ValidationMode, raw string, body []byte, scenario string,
+) (resp []byte, violations []string, err error) {
+	if mode == domain.ValidationOff {
+		resp, err = s.engine.Execute([]byte(raw), body, scenario)
+
+		return resp, nil, err
+	}
+
+	return s.engine.ExecuteValidated([]byte(raw), body, scenario, mode == domain.ValidationEnforce)
 }
 
 // Tools lists the tools declared by the project MCP manifest.
@@ -131,18 +180,27 @@ func (s *MCPServingService) getMCP(projectID string) (string, error) {
 	return c.Raw, nil
 }
 
+// mcpOutcome is what a served MCP request looked like, for the request log.
+type mcpOutcome struct {
+	status     int
+	rule       string
+	matched    bool
+	violations []string
+}
+
 // logResult records a request log entry (mirrors GraphQLServingService).
-func (s *MCPServingService) logResult(projectID string, statusCode int, rule string, matched bool, start time.Time) {
+func (s *MCPServingService) logResult(projectID string, o *mcpOutcome, start time.Time) {
 	s.logs.Add(&domain.RequestLog{
 		ID:          "",
 		ProjectID:   projectID,
 		Method:      "POST",
 		Path:        fmt.Sprintf(MCPMockPath, projectID),
-		StatusCode:  statusCode,
-		MatchedRule: rule,
-		Matched:     matched,
+		StatusCode:  o.status,
+		MatchedRule: o.rule,
+		Matched:     o.matched,
 		Timestamp:   time.Now().UTC(),
 		DurationMs:  time.Since(start).Milliseconds(),
+		Violations:  o.violations,
 	})
 }
 

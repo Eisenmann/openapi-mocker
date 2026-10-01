@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 
@@ -28,22 +29,33 @@ func (a *api) serveMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := a.s.MCPServing.Serve(r.PathValue("projectId"), body, r.Header.Get("X-Mock-Scenario"))
+	result, err := a.s.MCPServing.Handle(r.PathValue("projectId"), body, r.Header.Get("X-Mock-Scenario"))
 	if err != nil {
 		writeError(w, usecase.StatusFromError(err), err)
 		return
 	}
 
+	// Request validation outcome, visible to HTTP-level tooling (the same
+	// header the REST mock uses). Warnings are also in the result's _meta.
+	if len(result.Violations) > 0 {
+		verdict := "warn"
+		if result.Rejected {
+			verdict = "rejected"
+		}
+
+		w.Header().Set("X-Mock-Validation", fmt.Sprintf("%s: %d violation(s)", verdict, len(result.Violations)))
+	}
+
 	// JSON-RPC notifications must not receive a response body; the MCP
 	// Streamable HTTP transport requires 202 Accepted for them.
-	if resp == nil {
+	if result.Body == nil {
 		w.WriteHeader(http.StatusAccepted)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(resp)
+	_, _ = w.Write(result.Body)
 }
 
 // mcpTools lists the tools declared by the project MCP manifest - the same

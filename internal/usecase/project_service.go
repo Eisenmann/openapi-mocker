@@ -30,6 +30,20 @@ func (s *ProjectService) Get(id string) (*domain.Project, error) {
 	return s.repo.Get(id)
 }
 
+// SetValidationMode changes how the project's incoming mock requests are
+// validated against its contract. An empty mode means "off".
+func (s *ProjectService) SetValidationMode(id string, mode domain.ValidationMode) (*domain.Project, error) {
+	if !mode.Valid() {
+		return nil, ErrInvalidValidationMode
+	}
+
+	if mode == "" {
+		mode = domain.ValidationOff
+	}
+
+	return s.repo.SetValidationMode(id, mode)
+}
+
 func (s *ProjectService) Delete(id string) error {
 	return s.repo.Delete(id)
 }

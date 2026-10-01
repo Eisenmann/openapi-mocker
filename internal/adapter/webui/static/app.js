@@ -144,6 +144,7 @@ function renderContent() {
   ]));
   content.appendChild(el('p', { class: 'muted' }, `Mock base URL: `));
   content.lastChild.appendChild(el('code', {}, `${location.origin}/mock/${project.id}/...`));
+  content.appendChild(validationModeControl(project));
 
   const tabBar = el('div', { class: 'tabs' }, tabs.map(([key, label]) =>
     el('div', { class: 'tab' + (state.currentTab === key ? ' active' : ''), onclick: () => { state.currentTab = key; renderContent(); } }, label)
@@ -160,6 +161,38 @@ function renderContent() {
     case 'codegen': renderCodegenTab(panel, project); break;
     case 'logs': renderLogsTab(panel, project); break;
   }
+}
+
+// Request validation: checks incoming mock requests against the contract.
+const VALIDATION_MODES = [
+  ['off', 'Off - serve every request'],
+  ['warn', 'Warn - serve, but flag violations in the logs'],
+  ['enforce', 'Enforce - reject invalid requests (400 / JSON-RPC -32602)'],
+];
+
+function validationModeControl(project) {
+  const select = el('select', {
+    id: 'validationMode',
+    onchange: async (e) => {
+      try {
+        const updated = await api(`/api/projects/${project.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ validationMode: e.target.value }),
+        });
+        project.validationMode = updated.validationMode;
+        toast(`Request validation: ${e.target.value}`);
+      } catch (err) {
+        e.target.value = project.validationMode || 'off';
+        toast(err.message, 'error');
+      }
+    },
+  }, VALIDATION_MODES.map(([value, label]) => el('option', { value }, label)));
+  select.value = project.validationMode || 'off';
+  select.style.maxWidth = '460px';
+  return el('div', { class: 'row', style: 'align-items:center; gap:8px; margin-bottom:12px;' }, [
+    el('label', { for: 'validationMode', style: 'margin:0;' }, 'Request validation'),
+    select,
+  ]);
 }
 
 async function deleteProject(id) {
@@ -652,13 +685,15 @@ async function renderLogsTab(panel, project) {
   panel.appendChild(el('div', { class: 'card' }, [
     el('div', { class: 'flex-between' }, [el('h3', {}, 'Recent Requests'), el('button', { class: 'btn btn-secondary btn-sm', onclick: () => renderContent() }, 'Refresh')]),
     el('table', {}, [
-      el('tr', {}, [el('th', {}, 'Time'), el('th', {}, 'Method'), el('th', {}, 'Path'), el('th', {}, 'Status'), el('th', {}, 'ms')]),
+      el('tr', {}, [el('th', {}, 'Time'), el('th', {}, 'Method'), el('th', {}, 'Path'), el('th', {}, 'Status'), el('th', {}, 'ms'), el('th', {}, 'Validation')]),
       ...logs.map(l => el('tr', {}, [
         el('td', {}, new Date(l.timestamp).toLocaleTimeString()),
         el('td', {}, l.method),
         el('td', {}, l.path),
         el('td', {}, String(l.statusCode)),
         el('td', {}, String(l.durationMs)),
+        el('td', l.violations && l.violations.length ? { title: l.violations.join('\n') } : {},
+          l.violations && l.violations.length ? `⚠ ${l.violations.length} violation(s)` : ''),
       ])),
     ]),
   ]));

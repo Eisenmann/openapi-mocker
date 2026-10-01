@@ -20,6 +20,8 @@ type ProjectRepository interface {
 	Create(name, description string) *domain.Project
 	List() []*domain.Project
 	Get(id string) (*domain.Project, error)
+	// SetValidationMode updates how incoming mock requests are validated.
+	SetValidationMode(id string, mode domain.ValidationMode) (*domain.Project, error)
 	// Delete removes the project and cascades deletion of all its contracts/mocks.
 	// This is a referential-integrity concern of the store, not a usecase business rule.
 	Delete(id string) error
@@ -94,9 +96,21 @@ type MockResponse struct {
 	Headers     map[string]string
 	Body        []byte
 	DelayMs     int
-	Source      string // "rule" | "schema-example" | "chaos-injection".
+	Source      string // "rule" | "schema-example" | "chaos-injection" | "request-validation".
 	MatchedRule string
 	Matched     bool
+	// Violations holds the request-validation problems found (warn/enforce).
+	Violations []string
+}
+
+// RequestData is the part of an incoming mock request the contract engine
+// needs in order to validate it against the contract.
+type RequestData struct {
+	Method string
+	Path   string
+	Query  map[string][]string
+	Header map[string][]string
+	Body   []byte
 }
 
 // ContractEngine is the port over the OpenAPI parsing/validation library.
@@ -112,6 +126,10 @@ type ContractEngine interface {
 	ResponseSchemaJSON(raw []byte, method, path, statusCode string) (string, error)
 	ExampleResponse(raw []byte, method, path, statusCode string) (body []byte, contentType string, err error)
 	ValidateResponseBody(raw []byte, method, path, statusCode string, body []byte) error
+	// ValidateRequest checks path/query/header parameters, content type and
+	// body of req against the matching operation. It returns one message per
+	// violation (nil when the request is valid or the operation is unknown).
+	ValidateRequest(raw []byte, req *RequestData) []string
 	Diff(a, b string) []DiffLine
 }
 

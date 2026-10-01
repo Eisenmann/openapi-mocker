@@ -65,6 +65,20 @@ func (m *memProjectRepo) Get(id string) (*domain.Project, error) {
 	return p, nil
 }
 
+func (m *memProjectRepo) SetValidationMode(id string, mode domain.ValidationMode) (*domain.Project, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	p, ok := m.projects[id]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+
+	p.ValidationMode = mode
+
+	return p, nil
+}
+
 func (m *memProjectRepo) Delete(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -328,6 +342,10 @@ type stubEngine struct {
 	exampleErr      error
 	validateBodyErr error
 	diffLines       []usecase.DiffLine
+}
+
+func (m *stubEngine) ValidateRequest(raw []byte, req *usecase.RequestData) []string {
+	return nil
 }
 
 func (m *stubEngine) Validate(raw []byte) usecase.ValidationResult {

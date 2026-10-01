@@ -396,3 +396,39 @@ func TestStore_New_InvalidDir(t *testing.T) {
 		t.Fatal("expected error for invalid dir")
 	}
 }
+
+func TestStore_SetValidationMode(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	s, err := jsonstore.New(dir)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+
+	p := s.Create("P", "")
+	if p.ValidationMode != "" {
+		t.Errorf("new projects start without a mode (= off), got %q", p.ValidationMode)
+	}
+
+	updated, err := s.SetValidationMode(p.ID, domain.ValidationEnforce)
+	if err != nil || updated.ValidationMode != domain.ValidationEnforce {
+		t.Fatalf("SetValidationMode: %+v, %v", updated, err)
+	}
+
+	if _, err := s.SetValidationMode("missing", domain.ValidationWarn); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("unknown project: want ErrNotFound, got %v", err)
+	}
+
+	// Survives a reload from disk.
+	reloaded, err := jsonstore.New(dir)
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+
+	got, err := reloaded.Get(p.ID)
+	if err != nil || got.ValidationMode != domain.ValidationEnforce {
+		t.Errorf("mode must persist, got %+v, %v", got, err)
+	}
+}
