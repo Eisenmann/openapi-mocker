@@ -23,6 +23,7 @@ type MockServingService struct {
 	logs      LogRepository
 	engine    ContractEngine
 	cfg       servingConfig
+	templates *TemplateEngine
 }
 
 // MockRequest is an incoming mock-server request. Query, Header and Body feed
@@ -52,6 +53,7 @@ func NewMockServingService(
 		logs:      logs,
 		engine:    engine,
 		cfg:       newServingConfig(opts),
+		templates: NewTemplateEngine(),
 	}
 }
 
@@ -153,7 +155,7 @@ func (s *MockServingService) respond(projectID, raw, pathTemplate string, req *M
 	method, path, scenario := req.Method, req.Path, req.Scenario
 
 	if rule := s.findRule(projectID, pathTemplate, method, scenario); rule != nil {
-		return s.fromRule(rule)
+		return s.fromRule(rule, s.templateContext(projectID, pathTemplate, req))
 	}
 
 	if s.cfg.state != nil {
@@ -204,7 +206,33 @@ func (s *MockServingService) findRule(projectID, pathTemplate, method, scenario 
 	return fallback
 }
 
-func (s *MockServingService) fromRule(rule *domain.MockRule) *MockResponse {
+// templateContext describes the request for {{placeholder}} rendering.
+func (s *MockServingService) templateContext(projectID, pathTemplate string, req *MockRequest) *TemplateContext {
+	return &TemplateContext{
+		ProjectID: projectID, Method: strings.ToUpper(req.Method), Path: req.Path,
+		PathParams: pathParams(pathTemplate, req.Path),
+		Query:      req.Query, Header: req.Header, Body: req.Body,
+		JSON: false, body: nil, parsed: false,
+	}
+}
+
+// pathParams maps the {name} segments of a path template to the matching
+// segments of the request path.
+func pathParams(pathTemplate, path string) map[string]string {
+	params := map[string]string{}
+	tpl := strings.Split(strings.Trim(pathTemplate, "/"), "/")
+	act := strings.Split(strings.Trim(path, "/"), "/")
+
+	for i, seg := range tpl {
+		if i < len(act) && strings.HasPrefix(seg, "{") && strings.HasSuffix(seg, "}") {
+			params[seg[1:len(seg)-1]] = act[i]
+		}
+	}
+
+	return params
+}
+
+func (s *MockServingService) fromRule(rule *domain.MockRule, tc *TemplateContext) *MockResponse {
 	// Chaos testing: with probability FailRatePct, return a random 5xx error,
 	// even when the rule describes a successful scenario.
 	if rule.FailRatePct > 0 && rand.Intn(PercentBase) < rule.FailRatePct {
@@ -222,11 +250,35 @@ func (s *MockServingService) fromRule(rule *domain.MockRule) *MockResponse {
 		code = 200
 	}
 
+	contentType := nonEmpty(rule.ContentType, ContentTypeJSON)
+
 	return &MockResponse{
-		StatusCode: code, ContentType: nonEmpty(rule.ContentType, ContentTypeJSON),
-		Headers: rule.Headers, Body: []byte(rule.Body), DelayMs: rule.DelayMs,
-		Source: "rule", MatchedRule: rule.ID, Matched: true,
+		StatusCode: code, ContentType: contentType,
+		Headers: s.renderHeaders(rule.Headers, tc), Body: []byte(s.renderBody(rule.Body, contentType, tc)),
+		DelayMs: rule.DelayMs, Source: "rule", MatchedRule: rule.ID, Matched: true,
 	}
+}
+
+// renderBody fills the {{placeholders}} of a rule body.
+func (s *MockServingService) renderBody(body, contentType string, tc *TemplateContext) string {
+	ctx := *tc
+	ctx.JSON = strings.Contains(strings.ToLower(contentType), "json")
+
+	return s.templates.Render(body, &ctx)
+}
+
+// renderHeaders fills the {{placeholders}} of rule header values (as text).
+func (s *MockServingService) renderHeaders(headers map[string]string, tc *TemplateContext) map[string]string {
+	if len(headers) == 0 {
+		return headers
+	}
+
+	out := make(map[string]string, len(headers))
+	for k, v := range headers {
+		out[k] = s.templates.Render(v, tc)
+	}
+
+	return out
 }
 
 func (s *MockServingService) finish(projectID, method, path string, resp *MockResponse) MockResponse {

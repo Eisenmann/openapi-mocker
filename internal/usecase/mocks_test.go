@@ -483,9 +483,15 @@ type mockMCPEngine struct {
 	executeCalls   int
 }
 
-func (m *mockMCPEngine) ExecuteValidated(raw, req []byte, scenario string, enforce bool) ([]byte, []string, error) {
+func (m *mockMCPEngine) ExecuteWith(raw, req []byte, opts *usecase.MCPExecOptions) ([]byte, []string, error) {
+	if !opts.Validate {
+		m.executeCalls++
+
+		return m.executeBody, nil, m.executeErr
+	}
+
 	m.validatedCalls++
-	m.lastEnforce = enforce
+	m.lastEnforce = opts.Enforce
 
 	return m.executeBody, m.violations, m.executeErr
 }
@@ -500,12 +506,6 @@ func (m *mockMCPEngine) ParseAndValidate(raw []byte) error {
 
 func (m *mockMCPEngine) ListTools(raw []byte) ([]usecase.MCPTool, error) {
 	return m.listToolsResult, m.listToolsErr
-}
-
-func (m *mockMCPEngine) Execute(raw, req []byte, scenario string) ([]byte, error) {
-	m.executeCalls++
-
-	return m.executeBody, m.executeErr
 }
 
 // errSentinel is a generic error for tests.

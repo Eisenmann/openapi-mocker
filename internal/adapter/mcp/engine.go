@@ -307,7 +307,22 @@ func mustMarshal(v any) json.RawMessage {
 // status). Notifications produce no output: (nil, nil), and a batch made only
 // of notifications also produces none.
 func (e *Engine) Execute(raw, req []byte, scenario string) ([]byte, error) {
-	return e.run(raw, req, &callState{scenario: scenario, validate: false, enforce: false, violations: nil})
+	return e.run(raw, req, &callState{scenario: scenario, validate: false, enforce: false, violations: nil, render: nil})
+}
+
+// ExecuteWith is the general form of Execute and ExecuteValidated: it
+// validates when opts.Validate is set (rejecting invalid calls with
+// opts.Enforce) and renders opts.Render over every tool's mock result.
+func (e *Engine) ExecuteWith(
+	raw, req []byte, opts *usecase.MCPExecOptions,
+) (resp []byte, violations []string, err error) {
+	st := &callState{
+		scenario: opts.Scenario, validate: opts.Validate, enforce: opts.Enforce,
+		violations: nil, render: opts.Render,
+	}
+	resp, err = e.run(raw, req, st)
+
+	return resp, st.violations, err
 }
 
 // ExecuteValidated is Execute with tools/call arguments checked against each
@@ -317,7 +332,7 @@ func (e *Engine) Execute(raw, req []byte, scenario string) ([]byte, error) {
 func (e *Engine) ExecuteValidated(
 	raw, req []byte, scenario string, enforce bool,
 ) (resp []byte, violations []string, err error) {
-	st := &callState{scenario: scenario, validate: true, enforce: enforce, violations: nil}
+	st := &callState{scenario: scenario, validate: true, enforce: enforce, violations: nil, render: nil}
 	resp, err = e.run(raw, req, st)
 
 	return resp, st.violations, err
@@ -445,6 +460,13 @@ func callTool(m *manifest, r *jsonrpcRequest, st *callState) ([]byte, error) {
 	result, ok := tool.mockResponse(st.scenario)
 	if !ok {
 		return respondErr(r.ID, codeInternalError, "no mock response configured for tool: "+p.Name)
+	}
+
+	if st.render != nil {
+		rendered, isMap := st.render(result, p.Arguments).(map[string]any)
+		if isMap {
+			result = rendered
+		}
 	}
 
 	return respond(r.ID, withValidationWarnings(result, violations))
