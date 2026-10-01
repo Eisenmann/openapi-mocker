@@ -9,23 +9,45 @@ import (
 )
 
 type ContractService struct {
-	contracts ContractRepository
-	providers ProviderRepository
-	engine    ContractEngine
-	llm       LLMGateway
+	contracts  ContractRepository
+	providers  ProviderRepository
+	engine     ContractEngine
+	llm        LLMGateway
+	validators FormatValidators
 }
 
+// FormatValidators bundles the optional format-specific validation engines.
+// A nil field means no engine wired: the format is then accepted without
+// format-specific validation. OpenAPI validation never applies to GraphQL
+// SDL or MCP manifests (running it on them is a category error, not a
+// strictness choice), so nil engines simply skip that step.
+type FormatValidators struct {
+	GraphQL GraphQLEngine
+	MCP     MCPEngine
+}
+
+// NewContractService assembles the contract service. The variadic parameter
+// is a practical compromise: most assembly points (and all existing tests)
+// do not have format-specific engines, while the composition root passes
+// both - the variadic keeps those call sites unchanged.
 func NewContractService(
 	contracts ContractRepository,
 	providers ProviderRepository,
 	engine ContractEngine,
 	llm LLMGateway,
+	validators ...FormatValidators,
 ) *ContractService {
+	var fv FormatValidators
+	if len(validators) > 0 {
+		fv = validators[0]
+	}
+
 	return &ContractService{
-		contracts: contracts,
-		providers: providers,
-		engine:    engine,
-		llm:       llm,
+		contracts:  contracts,
+		providers:  providers,
+		engine:     engine,
+		llm:        llm,
+		validators: fv,
 	}
 }
 
@@ -42,7 +64,34 @@ func (s *ContractService) ListVersions(projectID string) []*domain.Contract {
 }
 
 func (s *ContractService) Validate(raw string) ValidationResult {
-	return s.engine.Validate([]byte(raw))
+	switch detectFormat(raw) {
+	case FormatGraphQL:
+		if s.validators.GraphQL == nil {
+			return ValidationResult{Valid: true}
+		}
+
+		res := s.validators.GraphQL.Validate([]byte(raw))
+
+		return ValidationResult{
+			Valid:   res.Valid,
+			Errors:  res.Errors,
+			OpCount: res.QueryFields + res.MutationFields,
+		}
+	case FormatMCP:
+		if s.validators.MCP == nil {
+			return ValidationResult{Valid: true}
+		}
+
+		res := s.validators.MCP.Validate([]byte(raw))
+
+		return ValidationResult{
+			Valid:   res.Valid,
+			Errors:  res.Errors,
+			OpCount: res.ToolCount,
+		}
+	default:
+		return s.engine.Validate([]byte(raw))
+	}
 }
 
 // Publish validates and saves a new version of the contract. Publishing makes
@@ -53,16 +102,11 @@ func (s *ContractService) Publish(projectID, raw, source string) (*domain.Contra
 		return nil, ErrContractEmpty
 	}
 
-	err := s.engine.ParseAndValidate([]byte(raw))
+	format := detectFormat(raw)
+
+	err := s.validateFormat(format, raw)
 	if err != nil {
 		return nil, err
-	}
-
-	format := "yaml"
-	if IsGraphQL(raw) {
-		format = FormatGraphQL
-	} else if strings.HasPrefix(strings.TrimSpace(raw), "{") {
-		format = "json"
 	}
 
 	if source == "" {
@@ -70,6 +114,46 @@ func (s *ContractService) Publish(projectID, raw, source string) (*domain.Contra
 	}
 
 	return s.contracts.AddVersion(projectID, format, raw, source), nil
+}
+
+// validateFormat runs the validation matching the contract format: OpenAPI
+// documents (json/yaml) through the OpenAPI engine, GraphQL SDL through the
+// GraphQL engine, MCP manifests through the MCP engine. A format whose
+// engine is not wired is accepted as-is.
+func (s *ContractService) validateFormat(format, raw string) error {
+	switch format {
+	case FormatGraphQL:
+		if s.validators.GraphQL == nil {
+			return nil
+		}
+
+		return s.validators.GraphQL.ParseAndValidate([]byte(raw))
+	case FormatMCP:
+		if s.validators.MCP == nil {
+			return nil
+		}
+
+		return s.validators.MCP.ParseAndValidate([]byte(raw))
+	default:
+		return s.engine.ParseAndValidate([]byte(raw))
+	}
+}
+
+// detectFormat classifies a raw contract by its content: GraphQL SDL, MCP
+// manifest, JSON or YAML (OpenAPI documents are the JSON/YAML cases). The
+// order matters: GraphQL SDL is never JSON, and an MCP manifest is JSON but
+// not an OpenAPI document.
+func detectFormat(raw string) string {
+	switch {
+	case IsGraphQL(raw):
+		return FormatGraphQL
+	case IsMCP(raw):
+		return FormatMCP
+	case strings.HasPrefix(strings.TrimSpace(raw), "{"):
+		return FormatJSON
+	default:
+		return FormatYAML
+	}
 }
 
 // Rollback re-publishes an old version (creates a new history entry with its

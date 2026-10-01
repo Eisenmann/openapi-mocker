@@ -15,4 +15,5 @@ var (
 	errQueryRequired             = errors.New("query is required")
 	errCodeGenAgentNotConfigured = errors.New("code generation agent is not configured")
 	errInvalidJSON               = errors.New("invalid JSON body")
+	errMCPNotEnabled             = errors.New("MCP serving not enabled")
 )

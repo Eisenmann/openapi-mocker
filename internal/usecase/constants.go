@@ -5,6 +5,7 @@ const (
 	FormatGraphQL = "graphql"
 	FormatYAML    = "yaml"
 	FormatJSON    = "json"
+	FormatMCP     = "mcp"
 )
 
 // Mock scenario constants.
@@ -20,6 +21,7 @@ const (
 // HTTP status code constants.
 const (
 	StatusOK                  = 200
+	StatusAccepted            = 202
 	StatusBadRequest          = 400
 	StatusNotFound            = 404
 	StatusInternalServerError = 500

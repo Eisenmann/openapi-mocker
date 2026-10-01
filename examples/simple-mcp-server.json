@@ -1,0 +1,37 @@
+{
+  "mcpServer": {
+    "name": "weather-mock-server",
+    "version": "1.0.0",
+    "tools": [
+      {
+        "name": "get_forecast",
+        "description": "Get the weather forecast for a city",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "city": { "type": "string" }
+          },
+          "required": ["city"]
+        },
+        "mockResponses": {
+          "default": { "forecast": "sunny", "high": 25, "low": 14 },
+          "rainy": { "forecast": "rain", "high": 18, "low": 11 }
+        }
+      },
+      {
+        "name": "lookup_city",
+        "description": "Resolve a city name to coordinates",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" }
+          },
+          "required": ["name"]
+        },
+        "mockResponses": {
+          "default": { "content": [ { "type": "text", "text": "52.52, 13.405" } ] }
+        }
+      }
+    ]
+  }
+}
