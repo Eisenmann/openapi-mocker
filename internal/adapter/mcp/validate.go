@@ -73,7 +73,7 @@ func schemaViolations(err error) []string {
 
 	var multi openapi3.MultiError
 	if errors.As(err, &multi) {
-		var out []string
+		out := make([]string, 0, len(multi))
 
 		for _, e := range multi {
 			out = append(out, schemaViolations(e)...)

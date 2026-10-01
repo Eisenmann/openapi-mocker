@@ -116,7 +116,7 @@ func requestViolations(err error) []string {
 	// errors it describes, and unwrapping it would lose where they occurred.
 	switch e := err.(type) { //nolint:errorlint // see above.
 	case openapi3.MultiError:
-		var out []string
+		out := make([]string, 0, len(e))
 
 		for _, inner := range e {
 			out = append(out, requestViolations(inner)...)
@@ -155,7 +155,7 @@ func describeRequestError(re *openapi3filter.RequestError) []string {
 func describeCause(where string, cause error, reason string) []string {
 	switch c := cause.(type) { //nolint:errorlint // schema errors may be nested in a multi-error.
 	case openapi3.MultiError:
-		var out []string
+		out := make([]string, 0, len(c))
 
 		for _, inner := range c {
 			out = append(out, describeCause(where, inner, reason)...)
