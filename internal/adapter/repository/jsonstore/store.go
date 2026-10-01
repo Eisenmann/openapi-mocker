@@ -142,6 +142,22 @@ func (s *Store) Get(id string) (*domain.Project, error) {
 	return p, nil
 }
 
+// SetValidationMode updates the project's request-validation mode.
+func (s *Store) SetValidationMode(id string, mode domain.ValidationMode) (*domain.Project, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	p, ok := s.d.Projects[id]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+
+	p.ValidationMode = mode
+	p.UpdatedAt = time.Now().UTC()
+
+	return p, s.save()
+}
+
 func (s *Store) Delete(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

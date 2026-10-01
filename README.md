@@ -59,6 +59,17 @@ desktop, in Docker, and in Kubernetes.
      `failRatePct`) — for testing client resilience.
    - **Schema-example fallback**, used when a mock is not configured manually
      or via LLM — the endpoint always responds with something valid.
+   - **Request validation** — check incoming requests against the contract.
+     Set per project (UI dropdown or `PATCH /api/projects/{id}` with
+     `{"validationMode": "off|warn|enforce"}`; default `off`). For REST it
+     validates path/query/header parameters, the request `Content-Type` and
+     the JSON body against the OpenAPI operation; for MCP it validates
+     `tools/call` arguments against the tool's `inputSchema`. `warn` serves
+     the mock anyway, adds an `X-Mock-Validation` header and records the
+     violations in the request log (for MCP the warnings are also attached to
+     the `tools/call` result as `_meta["openapi-mocker/validationWarnings"]`);
+     `enforce` answers `400` with `{"error": ..., "violations": [...]}` (REST)
+     or JSON-RPC `-32602` with the violations in `error.data` (MCP). Security schemes are not checked.
    - **Request log** to the mock server (method/path/status/time) right in the UI.
    - **"Try it" in the browser** — sending a request to the mock without
      Postman/curl.
@@ -101,7 +112,7 @@ kubectl -n openapi-mocker port-forward svc/openapi-mocker 8080:80
 | Method / Path | Purpose |
 |---|---|
 | `GET/POST /api/projects` | list / create project |
-| `GET/DELETE /api/projects/{id}` | project |
+| `GET/PATCH/DELETE /api/projects/{id}` | project (PATCH changes `validationMode`) |
 | `GET/POST /api/projects/{id}/contract` | get / publish active contract (JSON body may include `format`: `graphql`/`yaml`/`json`/`mcp`; auto-detected when omitted) |
 | `GET /api/projects/{id}/contract/versions` | version history |
 | `GET /api/projects/{id}/contract/versions/{version}` | contents of a specific version |
@@ -136,7 +147,7 @@ MCP tool call via the mock JSON-RPC endpoint:
 ```bash
 curl -X POST http://localhost:8080/mock/<projectId>/mcp \
   -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_forecast","arguments":{"city":"Berlin"}}}\x27
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_forecast","arguments":{"city":"Berlin"}}}'
 ```
 
 ## Known limitations / roadmap

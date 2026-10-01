@@ -56,6 +56,20 @@ func (m *mockProjectRepo) Get(id string) (*domain.Project, error) {
 	return p, nil
 }
 
+func (m *mockProjectRepo) SetValidationMode(id string, mode domain.ValidationMode) (*domain.Project, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	p, ok := m.projects[id]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+
+	p.ValidationMode = mode
+
+	return p, nil
+}
+
 func (m *mockProjectRepo) Delete(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -319,6 +333,17 @@ type mockContractEngine struct {
 	exampleErr      error
 	validateBodyErr error
 	diffLines       []usecase.DiffLine
+
+	// requestViolations is returned by ValidateRequest; validateRequestCalls
+	// counts how often it was asked.
+	requestViolations    []string
+	validateRequestCalls int
+}
+
+func (m *mockContractEngine) ValidateRequest(raw []byte, req *usecase.RequestData) []string {
+	m.validateRequestCalls++
+
+	return m.requestViolations
 }
 
 func (m *mockContractEngine) Validate(raw []byte) usecase.ValidationResult {
@@ -429,6 +454,19 @@ type mockMCPEngine struct {
 	listToolsErr    error
 	executeBody     []byte
 	executeErr      error
+
+	// ExecuteValidated recording and results.
+	violations     []string
+	validatedCalls int
+	lastEnforce    bool
+	executeCalls   int
+}
+
+func (m *mockMCPEngine) ExecuteValidated(raw, req []byte, scenario string, enforce bool) ([]byte, []string, error) {
+	m.validatedCalls++
+	m.lastEnforce = enforce
+
+	return m.executeBody, m.violations, m.executeErr
 }
 
 func (m *mockMCPEngine) Validate(raw []byte) usecase.MCPValidationResult {
@@ -444,6 +482,8 @@ func (m *mockMCPEngine) ListTools(raw []byte) ([]usecase.MCPTool, error) {
 }
 
 func (m *mockMCPEngine) Execute(raw, req []byte, scenario string) ([]byte, error) {
+	m.executeCalls++
+
 	return m.executeBody, m.executeErr
 }
 

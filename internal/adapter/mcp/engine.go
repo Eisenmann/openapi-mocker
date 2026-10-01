@@ -260,6 +260,22 @@ func respondErr(id json.RawMessage, code int, msg string) ([]byte, error) {
 	return marshalErr(id, code, msg)
 }
 
+// respondErrData is respondErr with a structured "data" payload.
+func respondErrData(id json.RawMessage, code int, msg string, data any) ([]byte, error) {
+	if isNotification(id) {
+		return nil, nil
+	}
+
+	errObj := &jsonrpcError{Code: code, Message: msg, Data: mustMarshal(data)}
+
+	out, err := json.Marshal(jsonrpcResponse{JSONRPC: jsonrpcVersion, ID: id, Result: nil, Error: errObj})
+	if err != nil {
+		return nil, fmt.Errorf("marshal error response: %w", err)
+	}
+
+	return out, nil
+}
+
 // marshalErr builds a JSON-RPC error response with an explicit ID. It skips
 // the notification rule: JSON-RPC 2.0 requires a response (with id null) even
 // for requests that could not be parsed, where no id could be extracted.
@@ -291,6 +307,25 @@ func mustMarshal(v any) json.RawMessage {
 // status). Notifications produce no output: (nil, nil), and a batch made only
 // of notifications also produces none.
 func (e *Engine) Execute(raw, req []byte, scenario string) ([]byte, error) {
+	return e.run(raw, req, &callState{scenario: scenario, validate: false, enforce: false, violations: nil})
+}
+
+// ExecuteValidated is Execute with tools/call arguments checked against each
+// tool's inputSchema. Violations are returned for every invalid call; with
+// enforce set, such a call is answered with a JSON-RPC -32602 error instead
+// of the mock response.
+func (e *Engine) ExecuteValidated(
+	raw, req []byte, scenario string, enforce bool,
+) (resp []byte, violations []string, err error) {
+	st := &callState{scenario: scenario, validate: true, enforce: enforce, violations: nil}
+	resp, err = e.run(raw, req, st)
+
+	return resp, st.violations, err
+}
+
+// run answers req (a single request or a batch) and records validation
+// outcomes in st.
+func (e *Engine) run(raw, req []byte, st *callState) ([]byte, error) {
 	m, err := parse(raw)
 	if err != nil {
 		return nil, err
@@ -298,15 +333,15 @@ func (e *Engine) Execute(raw, req []byte, scenario string) ([]byte, error) {
 
 	trimmed := bytes.TrimSpace(req)
 	if len(trimmed) > 0 && trimmed[0] == '[' {
-		return e.executeBatch(m, trimmed, scenario)
+		return e.executeBatch(m, trimmed, st)
 	}
 
-	return e.executeOne(m, trimmed, scenario)
+	return e.executeOne(m, trimmed, st)
 }
 
 // executeBatch handles a JSON-RPC batch: every element is answered
 // independently and the non-notification responses are returned as an array.
-func (e *Engine) executeBatch(m *manifest, req []byte, scenario string) ([]byte, error) {
+func (e *Engine) executeBatch(m *manifest, req []byte, st *callState) ([]byte, error) {
 	var items []json.RawMessage
 
 	err := json.Unmarshal(req, &items)
@@ -320,7 +355,7 @@ func (e *Engine) executeBatch(m *manifest, req []byte, scenario string) ([]byte,
 
 	responses := make([]json.RawMessage, 0, len(items))
 	for _, item := range items {
-		out, err := e.executeOne(m, item, scenario)
+		out, err := e.executeOne(m, item, st)
 		if err != nil {
 			return nil, err
 		}
@@ -343,7 +378,7 @@ func (e *Engine) executeBatch(m *manifest, req []byte, scenario string) ([]byte,
 }
 
 // executeOne answers a single JSON-RPC request object.
-func (e *Engine) executeOne(m *manifest, req []byte, scenario string) ([]byte, error) {
+func (e *Engine) executeOne(m *manifest, req []byte, st *callState) ([]byte, error) {
 	var r jsonrpcRequest
 
 	err := json.Unmarshal(req, &r)
@@ -367,7 +402,7 @@ func (e *Engine) executeOne(m *manifest, req []byte, scenario string) ([]byte, e
 	case "tools/list":
 		return respond(r.ID, map[string]any{"tools": m.tools()})
 	case "tools/call":
-		return callTool(m, &r, scenario)
+		return callTool(m, &r, st)
 	default:
 		return respondErr(r.ID, codeMethodNotFound, "method not found: "+r.Method)
 	}
@@ -386,7 +421,7 @@ func initializeResult(m *manifest, params json.RawMessage) map[string]any {
 }
 
 // callTool answers a tools/call request from the tool's mock responses.
-func callTool(m *manifest, r *jsonrpcRequest, scenario string) ([]byte, error) {
+func callTool(m *manifest, r *jsonrpcRequest, st *callState) ([]byte, error) {
 	var p struct {
 		Name      string          `json:"name"`
 		Arguments json.RawMessage `json:"arguments"`
@@ -402,12 +437,17 @@ func callTool(m *manifest, r *jsonrpcRequest, scenario string) ([]byte, error) {
 		return respondErr(r.ID, codeInvalidParams, "unknown tool: "+p.Name)
 	}
 
-	result, ok := tool.mockResponse(scenario)
+	violations := st.check(&tool, p.Name, p.Arguments)
+	if st.enforce && len(violations) > 0 {
+		return respondErrData(r.ID, codeInvalidParams, "invalid params for tool "+p.Name, violations)
+	}
+
+	result, ok := tool.mockResponse(st.scenario)
 	if !ok {
 		return respondErr(r.ID, codeInternalError, "no mock response configured for tool: "+p.Name)
 	}
 
-	return respond(r.ID, result)
+	return respond(r.ID, withValidationWarnings(result, violations))
 }
 
 // findTool returns the tool with the given name.

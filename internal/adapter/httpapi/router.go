@@ -28,6 +28,7 @@ func NewRouter(s *Services) http.Handler {
 	mux.HandleFunc("GET /api/projects", a.listProjects)
 	mux.HandleFunc("POST /api/projects", a.createProject)
 	mux.HandleFunc("GET /api/projects/{id}", a.getProject)
+	mux.HandleFunc("PATCH /api/projects/{id}", a.updateProject)
 	mux.HandleFunc("DELETE /api/projects/{id}", a.deleteProject)
 
 	// --- contracts ---.
@@ -101,7 +102,7 @@ func spaFallback(fs http.Handler) http.Handler {
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Mock-Scenario")
 
 		if r.Method == http.MethodOptions {

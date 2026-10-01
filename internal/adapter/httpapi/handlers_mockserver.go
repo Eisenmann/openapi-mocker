@@ -1,9 +1,15 @@
 package httpapi
 
 import (
+	"io"
 	"net/http"
 	"time"
+
+	"github.com/Eisenmann/openapi-mocker/internal/usecase"
 )
+
+// maxMockBodyBytes caps the request body accepted by the mock server.
+const maxMockBodyBytes = 10 << 20
 
 // serveMock is the HTTP delegate for usecase.MockServingService: the usecase
 // decides WHAT to respond (including the required delay in ms), and this
@@ -11,11 +17,34 @@ import (
 // http.ResponseWriter. This separation keeps the usecase layer free of
 // side-effects tied to real request-time execution.
 func (a *api) serveMock(w http.ResponseWriter, r *http.Request) {
-	projectID := r.PathValue("projectId")
-	path := "/" + r.PathValue("path")
-	scenario := r.Header.Get("X-Mock-Scenario")
+	a.handleMock(w, r, "/"+r.PathValue("path"))
+}
 
-	resp := a.s.MockServing.Serve(projectID, r.Method, path, scenario)
+func (a *api) serveMockRoot(w http.ResponseWriter, r *http.Request) {
+	a.handleMock(w, r, "/")
+}
+
+// handleMock hands the full request (query, headers and body, so the usecase
+// can validate it against the contract) to the usecase and writes the result.
+func (a *api) handleMock(w http.ResponseWriter, r *http.Request, path string) {
+	defer r.Body.Close()
+
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxMockBodyBytes))
+	if err != nil {
+		writeError(w, http.StatusRequestEntityTooLarge, err)
+		return
+	}
+
+	resp := a.s.MockServing.ServeRequest(r.PathValue("projectId"), &usecase.MockRequest{
+		Method:   r.Method,
+		Path:     path,
+		Scenario: r.Header.Get("X-Mock-Scenario"),
+		Query:    r.URL.Query(),
+		Header:   r.Header,
+		Body:     body,
+
+		SkipValidation: false,
+	})
 
 	if resp.DelayMs > 0 {
 		time.Sleep(time.Duration(resp.DelayMs) * time.Millisecond)
@@ -35,26 +64,10 @@ func (a *api) serveMock(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(resp.StatusCode)
 
-	if _, err := w.Write(resp.Body); err != nil {
+	_, err = w.Write(resp.Body)
+	if err != nil {
 		http.Error(w, "failed to write response", http.StatusInternalServerError)
-	}
-}
 
-func (a *api) serveMockRoot(w http.ResponseWriter, r *http.Request) {
-	scenario := r.Header.Get("X-Mock-Scenario")
-
-	resp := a.s.MockServing.Serve(r.PathValue("projectId"), r.Method, "/", scenario)
-	if resp.DelayMs > 0 {
-		time.Sleep(time.Duration(resp.DelayMs) * time.Millisecond)
-	}
-
-	if resp.ContentType != "" {
-		w.Header().Set("Content-Type", resp.ContentType)
-	}
-
-	w.WriteHeader(resp.StatusCode)
-
-	if _, err := w.Write(resp.Body); err != nil {
-		http.Error(w, "failed to write response", http.StatusInternalServerError)
+		return
 	}
 }

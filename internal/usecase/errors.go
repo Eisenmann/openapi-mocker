@@ -15,6 +15,7 @@ var (
 	ErrProviderAndDescRequired = errors.New("providerId and description are required")
 	ErrOperationNotFound       = errors.New("operation not found in contract")
 	ErrUnsupportedFormat       = errors.New("unsupported contract format")
+	ErrInvalidValidationMode   = errors.New("validationMode must be one of: off, warn, enforce")
 )
 
 // StatusFromError maps a usecase-layer error to the HTTP status code that both
@@ -28,6 +29,8 @@ func StatusFromError(err error) int {
 	case errors.Is(err, ErrNotGraphQLContract):
 		return StatusBadRequest
 	case errors.Is(err, ErrNotMCPContract):
+		return StatusBadRequest
+	case errors.Is(err, ErrInvalidValidationMode):
 		return StatusBadRequest
 	default:
 		return StatusInternalServerError

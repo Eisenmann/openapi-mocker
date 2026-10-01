@@ -13,4 +13,7 @@ type RequestLog struct {
 	Matched     bool      `json:"matched"`
 	Timestamp   time.Time `json:"timestamp"`
 	DurationMs  int64     `json:"durationMs"`
+	// Violations lists request-validation problems found for this request
+	// (set when the project's validation mode is warn or enforce).
+	Violations []string `json:"violations,omitempty"`
 }
