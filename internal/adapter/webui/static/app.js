@@ -545,6 +545,8 @@ async function openMockEditor(projectId, endpoint, mock) {
   ]));
   modal.appendChild(el('label', {}, 'Response Body (JSON)'));
   modal.appendChild(body);
+  modal.appendChild(el('p', { class: 'muted', style: 'font-size:12px; margin:4px 0 0;' },
+    'Placeholders: {{request.body.name}} {{request.query.x}} {{request.header.X-Y}} {{path.id}} {{uuid}} {{now}} {{now +2h}} {{timestamp}} {{counter}} {{faker.name}} {{faker.email}} {{faker.int 1 100}} {{faker.pick a b c}}'));
   modal.appendChild(el('div', { class: 'card', style: 'margin-top:10px;' }, [
     el('label', {}, '✨ Generate Body via LLM'),
     el('div', { class: 'row' }, [providerSelect, hints]),

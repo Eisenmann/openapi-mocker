@@ -70,6 +70,25 @@ desktop, in Docker, and in Kubernetes.
      the `tools/call` result as `_meta["openapi-mocker/validationWarnings"]`);
      `enforce` answers `400` with `{"error": ..., "violations": [...]}` (REST)
      or JSON-RPC `-32602` with the violations in `error.data` (MCP). Security schemes are not checked.
+   - **Response templating** — put `{{placeholders}}` in mock rule bodies and
+     header values (REST) and in MCP tool `mockResponses`, so one mock reacts
+     to the request instead of needing a rule per case. Available:
+     `{{request.method}}`, `{{request.path}}`, `{{request.query.name}}`,
+     `{{request.header.X-Name}}`, `{{request.body}}`, `{{request.body.user.name}}`
+     / `{{request.body.items[0].id}}` (for MCP the body is the tool call
+     arguments), `{{path.id}}`, `{{uuid}}`, `{{now}}` / `{{now +2h}}` /
+     `{{now -3d}}`, `{{now.unix}}` / `{{timestamp}}`, `{{date}}`,
+     `{{counter}}` / `{{counter orders}}` (per project, +1 on every use, kept in
+     memory), and faker data: `{{faker.name}}`, `firstName`, `lastName`,
+     `username`, `email`, `phone`, `city`, `country`, `company`, `word`,
+     `sentence [n]`, `int [min max]`, `float [min max]`, `bool`,
+     `pick a b c`. In a JSON body a placeholder inside a string is escaped, and
+     one outside a string becomes its JSON value (`{"id": {{path.id}}}` gives
+     a number, a missing request field gives `null`); in MCP results a string
+     that is exactly one placeholder keeps the value's type. Unknown
+     placeholders are left as written, so existing mocks keep working. Rules
+     are saved with their placeholders and must be valid JSON once rendered.
+     Schema-example fallbacks and stateful responses are not templated.
    - **Stateful mocks** — let `POST`, `PUT`, `PATCH` and `DELETE` change the
      data that later `GET`s return, so a "create then fetch" flow can be
      tested. Set per project (UI dropdown or `PATCH /api/projects/{id}` with

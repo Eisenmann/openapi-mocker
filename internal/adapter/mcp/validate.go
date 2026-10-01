@@ -17,6 +17,8 @@ type callState struct {
 	validate   bool
 	enforce    bool
 	violations []string
+	// render fills {{placeholders}} in a tool's mock result (nil: leave as is).
+	render func(v any, arguments []byte) any
 }
 
 // check validates the arguments of a tools/call against the tool's

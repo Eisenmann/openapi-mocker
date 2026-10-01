@@ -37,27 +37,36 @@ type MCPTool struct {
 // MCPEngine is the port that the usecase layer depends on for all MCP work.
 // The adapter (implemented with encoding/json, since MCP is JSON-RPC 2.0
 // over HTTP) fulfills it. No protocol detail ever crosses this boundary.
+// MCPExecOptions tunes MCPEngine.ExecuteWith.
+type MCPExecOptions struct {
+	Scenario string
+	Validate bool
+	Enforce  bool
+	// Render transforms a tool's decoded mock result (e.g. fills in
+	// placeholders), given the tool call's raw arguments.
+	Render func(result any, arguments []byte) any
+}
+
 type MCPEngine interface {
 	Validate(raw []byte) MCPValidationResult
 	ParseAndValidate(raw []byte) error
 	ListTools(raw []byte) ([]MCPTool, error)
-	// Execute answers ONE JSON-RPC 2.0 request against the manifest.
-	// scenario selects among the tool declared mock responses (empty
-	// string means "default") - the same X-Mock-Scenario concept as the
-	// plain OpenAPI mock server. Execute returns (responseJSON, nil) for
-	// a handled request, including JSON-RPC-level errors such as
-	// "method not found" or a parse error, which are valid protocol
-	// responses with HTTP 200, and (nil, nil) for JSON-RPC notifications,
-	// which must not receive a body at all. A non-nil error means the
-	// manifest itself failed to load - an infrastructure failure the
-	// handler maps to an HTTP error.
-	Execute(raw, req []byte, scenario string) ([]byte, error)
-	// ExecuteValidated is Execute plus request validation: the arguments of
-	// every tools/call are checked against the tool's inputSchema and the
-	// problems are returned as violations. With enforce set, an invalid call
-	// is answered with a JSON-RPC invalid-params error (-32602) instead of
-	// the mock response; without it the mock is served regardless.
-	ExecuteValidated(raw, req []byte, scenario string, enforce bool) (resp []byte, violations []string, err error)
+	// ExecuteWith answers a JSON-RPC 2.0 request (or batch) against the
+	// manifest. opts.Scenario selects among the tool declared mock responses
+	// (empty string means "default") - the same X-Mock-Scenario concept as
+	// the plain OpenAPI mock server. With opts.Validate the arguments of every
+	// tools/call are checked against the tool's inputSchema and the problems
+	// are returned as violations; with opts.Enforce an invalid call is answered
+	// with a JSON-RPC invalid-params error (-32602) instead of the mock
+	// response. opts.Render, when set, is applied to every mock result.
+	//
+	// It returns (responseJSON, nil) for a handled request, including
+	// JSON-RPC-level errors such as "method not found" or a parse error,
+	// which are valid protocol responses with HTTP 200, and (nil, nil) for
+	// JSON-RPC notifications, which must not receive a body at all. A non-nil
+	// error means the manifest itself failed to load - an infrastructure
+	// failure the handler maps to an HTTP error.
+	ExecuteWith(raw, req []byte, opts *MCPExecOptions) (resp []byte, violations []string, err error)
 }
 
 // MCPServingService serves mock MCP responses for MCP contracts. Like
@@ -68,6 +77,7 @@ type MCPServingService struct {
 	logs      LogRepository
 	engine    MCPEngine
 	cfg       servingConfig
+	templates *TemplateEngine
 }
 
 func NewMCPServingService(
@@ -76,7 +86,9 @@ func NewMCPServingService(
 	engine MCPEngine,
 	opts ...ServingOption,
 ) *MCPServingService {
-	return &MCPServingService{contracts: contracts, logs: logs, engine: engine, cfg: newServingConfig(opts)}
+	return &MCPServingService{
+		contracts: contracts, logs: logs, engine: engine, cfg: newServingConfig(opts), templates: NewTemplateEngine(),
+	}
 }
 
 // MCPResponse is the outcome of serving one MCP request.
@@ -116,7 +128,7 @@ func (s *MCPServingService) Handle(projectID string, body []byte, scenario strin
 
 	mode := s.cfg.validationMode(projectID)
 
-	resp, violations, err := s.execute(mode, raw, body, scenario)
+	resp, violations, err := s.execute(projectID, mode, raw, body, scenario)
 	if err != nil {
 		// Only manifest-level failures reach this point; request-level
 		// problems are JSON-RPC error responses produced by the engine.
@@ -144,17 +156,22 @@ func (s *MCPServingService) Handle(projectID string, body []byte, scenario strin
 }
 
 // execute runs the request through the engine, validating it when the
-// project's validation mode asks for that.
+// project's validation mode asks for that and filling in the mock results'
+// {{placeholders}}.
 func (s *MCPServingService) execute(
-	mode domain.ValidationMode, raw string, body []byte, scenario string,
+	projectID string, mode domain.ValidationMode, raw string, body []byte, scenario string,
 ) (resp []byte, violations []string, err error) {
-	if mode == domain.ValidationOff {
-		resp, err = s.engine.Execute([]byte(raw), body, scenario)
-
-		return resp, nil, err
-	}
-
-	return s.engine.ExecuteValidated([]byte(raw), body, scenario, mode == domain.ValidationEnforce)
+	return s.engine.ExecuteWith([]byte(raw), body, &MCPExecOptions{
+		Scenario: scenario,
+		Validate: mode != domain.ValidationOff,
+		Enforce:  mode == domain.ValidationEnforce,
+		Render: func(result any, arguments []byte) any {
+			return s.templates.RenderValue(result, &TemplateContext{
+				ProjectID: projectID, Method: "tools/call", Path: "", PathParams: nil,
+				Query: nil, Header: nil, Body: arguments, JSON: false, body: nil, parsed: false,
+			})
+		},
+	})
 }
 
 // Tools lists the tools declared by the project MCP manifest.

@@ -75,7 +75,15 @@ func validateJSONBody(body string) error {
 
 	var v interface{}
 
-	err := json.Unmarshal([]byte(body), &v)
+	// Placeholders are rendered first (against an empty request, with a
+	// throwaway engine so no counter moves): the body has to be valid JSON
+	// once they are filled in.
+	sample := &TemplateContext{
+		ProjectID: "", Method: "", Path: "", PathParams: nil, Query: nil, Header: nil, Body: nil,
+		JSON: true, body: nil, parsed: false,
+	}
+
+	err := json.Unmarshal([]byte(NewTemplateEngine().Render(body, sample)), &v)
 	if err != nil {
 		return fmt.Errorf("mock body must be valid JSON: %w", err)
 	}
