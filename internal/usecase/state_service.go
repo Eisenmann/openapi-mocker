@@ -21,6 +21,9 @@ var (
 	errStateBody     = errors.New("request body must be a JSON object")
 )
 
+// methodPost is the HTTP method used for creating and for GraphQL/MCP calls.
+const methodPost = "POST"
+
 const (
 	statusCreated    = 201
 	statusNoContent  = 204
@@ -127,7 +130,7 @@ func (o *stateOp) collection(method string) (*MockResponse, bool) {
 	switch method {
 	case "GET":
 		return o.list(), true
-	case "POST":
+	case methodPost:
 		return o.create(), true
 	default:
 		return nil, false
@@ -281,7 +284,7 @@ func (o *stateOp) notFound() *MockResponse {
 func (o *stateOp) idIsString() bool {
 	status := strconv.Itoa(o.status(statusCreated))
 
-	schema, err := o.svc.engine.ResponseSchemaJSON([]byte(o.raw), "POST", o.req.Path, status)
+	schema, err := o.svc.engine.ResponseSchemaJSON([]byte(o.raw), methodPost, o.req.Path, status)
 	if err != nil {
 		return false
 	}

@@ -193,7 +193,7 @@ func (s *MCPServingService) logResult(projectID string, o *mcpOutcome, start tim
 	s.logs.Add(&domain.RequestLog{
 		ID:          "",
 		ProjectID:   projectID,
-		Method:      "POST",
+		Method:      methodPost,
 		Path:        fmt.Sprintf(MCPMockPath, projectID),
 		StatusCode:  o.status,
 		MatchedRule: o.rule,

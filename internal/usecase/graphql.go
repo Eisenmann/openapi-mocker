@@ -183,7 +183,7 @@ func (s *GraphQLServingService) logResult(projectID string, statusCode int, matc
 	s.logs.Add(&domain.RequestLog{
 		ID:          "",
 		ProjectID:   projectID,
-		Method:      "POST",
+		Method:      methodPost,
 		Path:        fmt.Sprintf(GraphQLMockPath, projectID),
 		StatusCode:  statusCode,
 		MatchedRule: "",
