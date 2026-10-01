@@ -158,6 +158,22 @@ func (s *Store) SetValidationMode(id string, mode domain.ValidationMode) (*domai
 	return p, s.save()
 }
 
+// SetStateMode updates whether the project keeps mock state.
+func (s *Store) SetStateMode(id string, mode domain.StateMode) (*domain.Project, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	p, ok := s.d.Projects[id]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+
+	p.StateMode = mode
+	p.UpdatedAt = time.Now().UTC()
+
+	return p, s.save()
+}
+
 func (s *Store) Delete(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

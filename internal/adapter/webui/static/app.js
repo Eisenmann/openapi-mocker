@@ -132,6 +132,7 @@ function renderContent() {
   const tabs = [
     ['contract', 'Contract'],
     ['mocks', 'Mock Data'],
+    ['state', 'Mock State'],
     ['llm', 'LLM Providers'],
     ['codegen', 'Codegen'],
     ['logs', 'Try It / Logs'],
@@ -145,6 +146,7 @@ function renderContent() {
   content.appendChild(el('p', { class: 'muted' }, `Mock base URL: `));
   content.lastChild.appendChild(el('code', {}, `${location.origin}/mock/${project.id}/...`));
   content.appendChild(validationModeControl(project));
+  content.appendChild(stateModeControl(project));
 
   const tabBar = el('div', { class: 'tabs' }, tabs.map(([key, label]) =>
     el('div', { class: 'tab' + (state.currentTab === key ? ' active' : ''), onclick: () => { state.currentTab = key; renderContent(); } }, label)
@@ -157,6 +159,7 @@ function renderContent() {
   switch (state.currentTab) {
     case 'contract': renderContractTab(panel, project); break;
     case 'mocks': renderMocksTab(panel, project); break;
+    case 'state': renderStateTab(panel, project); break;
     case 'llm': renderLLMTab(panel, project); break;
     case 'codegen': renderCodegenTab(panel, project); break;
     case 'logs': renderLogsTab(panel, project); break;
@@ -193,6 +196,94 @@ function validationModeControl(project) {
     el('label', { for: 'validationMode', style: 'margin:0;' }, 'Request validation'),
     select,
   ]);
+}
+
+// Stateful mocks: POST/PUT/PATCH/DELETE change what later GETs return.
+const STATE_MODES = [
+  ['off', 'Off - scenarios are static'],
+  ['memory', 'Memory - state is lost on restart'],
+  ['persisted', 'Persisted - state is saved to disk'],
+];
+
+function stateModeControl(project) {
+  const select = el('select', {
+    id: 'stateMode',
+    onchange: async (e) => {
+      try {
+        const updated = await api(`/api/projects/${project.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ stateMode: e.target.value }),
+        });
+        project.stateMode = updated.stateMode;
+        toast(`Stateful mocks: ${e.target.value}`);
+        if (state.currentTab === 'state') renderContent();
+      } catch (err) {
+        e.target.value = project.stateMode || 'off';
+        toast(err.message, 'error');
+      }
+    },
+  }, STATE_MODES.map(([value, label]) => el('option', { value }, label)));
+  select.value = project.stateMode || 'off';
+  select.style.maxWidth = '460px';
+  return el('div', { class: 'row', style: 'align-items:center; gap:8px; margin-bottom:12px;' }, [
+    el('label', { for: 'stateMode', style: 'margin:0;' }, 'Stateful mocks'),
+    select,
+  ]);
+}
+
+async function renderStateTab(panel, project) {
+  panel.innerHTML = '';
+  if (!project.stateMode || project.stateMode === 'off') {
+    panel.appendChild(el('div', { class: 'card' }, [
+      el('h3', {}, 'Mock State'),
+      el('p', { class: 'muted' }, 'Stateful mocks are off. Choose Memory or Persisted above to let POST, PUT, PATCH and DELETE change the data that later GETs return. Explicit mock rules still take precedence.'),
+    ]));
+    return;
+  }
+
+  let snapshot = {};
+  try { snapshot = await api(`/api/projects/${project.id}/state`); } catch (err) { toast(err.message, 'error'); }
+
+  const names = Object.keys(snapshot).sort();
+  const list = el('div', {}, names.length === 0
+    ? el('p', { class: 'muted' }, 'No data yet. Collections appear when a client POSTs, or seed one below.')
+    : names.map(name => el('div', { class: 'card' }, [
+      el('div', { class: 'flex-between' }, [
+        el('h3', {}, `${name} (${snapshot[name].length})`),
+        el('button', { class: 'btn btn-danger btn-sm', onclick: async () => {
+          await api(`/api/projects/${project.id}/state${name}`, { method: 'DELETE' });
+          renderContent();
+        } }, 'Reset'),
+      ]),
+      el('pre', { class: 'code' }, JSON.stringify(snapshot[name], null, 2)),
+    ])));
+
+  const collection = el('input', { id: 'seedCollection', placeholder: '/users' });
+  const data = el('textarea', { id: 'seedData', rows: 5, placeholder: '[{"id": 1, "name": "Ann"}]' });
+
+  panel.appendChild(el('div', { class: 'flex-between' }, [
+    el('h3', {}, `Mock State (${project.stateMode})`),
+    el('button', { class: 'btn btn-danger btn-sm', onclick: async () => {
+      await api(`/api/projects/${project.id}/state`, { method: 'DELETE' });
+      renderContent();
+    } }, 'Reset all'),
+  ]));
+  panel.appendChild(list);
+  panel.appendChild(el('div', { class: 'card' }, [
+    el('h3', {}, 'Seed a collection'),
+    el('p', { class: 'muted' }, 'Replaces the collection with a JSON array of objects. Resources without an id get a sequential one.'),
+    collection,
+    data,
+    el('button', { class: 'btn', onclick: async () => {
+      const name = collection.value.trim();
+      if (!name) { toast('Collection path is required', 'error'); return; }
+      try {
+        const res = await api(`/api/projects/${project.id}/state/${name.replace(/^\/+/, '')}`, { method: 'PUT', body: data.value });
+        toast(`Seeded ${res.count} resource(s)`);
+        renderContent();
+      } catch (err) { toast(err.message, 'error'); }
+    } }, 'Seed'),
+  ]));
 }
 
 async function deleteProject(id) {

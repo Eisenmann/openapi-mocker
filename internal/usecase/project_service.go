@@ -44,6 +44,20 @@ func (s *ProjectService) SetValidationMode(id string, mode domain.ValidationMode
 	return s.repo.SetValidationMode(id, mode)
 }
 
+// SetStateMode changes whether the project keeps mock state (stateful
+// POST/PUT/PATCH/DELETE) and where. An empty mode means "off".
+func (s *ProjectService) SetStateMode(id string, mode domain.StateMode) (*domain.Project, error) {
+	if !mode.Valid() {
+		return nil, ErrInvalidStateMode
+	}
+
+	if mode == "" {
+		mode = domain.StateOff
+	}
+
+	return s.repo.SetStateMode(id, mode)
+}
+
 func (s *ProjectService) Delete(id string) error {
 	return s.repo.Delete(id)
 }

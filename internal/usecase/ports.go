@@ -22,6 +22,8 @@ type ProjectRepository interface {
 	Get(id string) (*domain.Project, error)
 	// SetValidationMode updates how incoming mock requests are validated.
 	SetValidationMode(id string, mode domain.ValidationMode) (*domain.Project, error)
+	// SetStateMode updates whether (and where) the project keeps mock state.
+	SetStateMode(id string, mode domain.StateMode) (*domain.Project, error)
 	// Delete removes the project and cascades deletion of all its contracts/mocks.
 	// This is a referential-integrity concern of the store, not a usecase business rule.
 	Delete(id string) error
@@ -130,7 +132,31 @@ type ContractEngine interface {
 	// body of req against the matching operation. It returns one message per
 	// violation (nil when the request is valid or the operation is unknown).
 	ValidateRequest(raw []byte, req *RequestData) []string
+	// SuccessStatus returns the lowest 2xx status code the operation declares
+	// (ok is false when it declares none or the operation is unknown).
+	SuccessStatus(raw []byte, method, path string) (code int, ok bool)
 	Diff(a, b string) []DiffLine
+}
+
+// ---------- Mock state (port over collection storage) ----------.
+
+// StateStore holds the collections of stateful mocks. Memory and persisted
+// collections live in separate namespaces, so switching a project's mode never
+// mixes the two.
+type StateStore interface {
+	// Transact runs fn with exclusive access to the collection (created on
+	// first use). The changes are kept only when fn returns nil, and are
+	// written to disk for the persisted mode.
+	Transact(projectID string, mode domain.StateMode, collection string, fn func(c *domain.StateCollection) error) error
+	// View returns a copy of the collection (empty when it does not exist).
+	View(projectID string, mode domain.StateMode, collection string) domain.StateCollection
+	// Snapshot returns a copy of all collections of the project, by name.
+	Snapshot(projectID string, mode domain.StateMode) map[string]domain.StateCollection
+	// Replace sets the collection to c, creating it when needed.
+	Replace(projectID string, mode domain.StateMode, collection string, c *domain.StateCollection) error
+	// Reset removes one collection, or every collection of the project (in
+	// both modes) when collection is empty.
+	Reset(projectID, collection string) error
 }
 
 // ---------- LLM gateway (port over specific HTTP LLM APIs) ----------.

@@ -33,6 +33,7 @@ type Services struct {
 	MockServing    *usecase.MockServingService
 	GraphQLServing *usecase.GraphQLServingService
 	MCPServing     *usecase.MCPServingService
+	State          *usecase.StateService
 	Codegen        *usecase.CodegenService
 	Logs           *usecase.LogService
 	CodeGenAgent   CodeGenAgentPort

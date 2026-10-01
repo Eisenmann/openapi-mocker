@@ -70,6 +70,20 @@ func (m *mockProjectRepo) SetValidationMode(id string, mode domain.ValidationMod
 	return p, nil
 }
 
+func (m *mockProjectRepo) SetStateMode(id string, mode domain.StateMode) (*domain.Project, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	p, ok := m.projects[id]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+
+	p.StateMode = mode
+
+	return p, nil
+}
+
 func (m *mockProjectRepo) Delete(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -338,6 +352,13 @@ type mockContractEngine struct {
 	// counts how often it was asked.
 	requestViolations    []string
 	validateRequestCalls int
+
+	// successStatus is returned by SuccessStatus (0 = no 2xx declared).
+	successStatus int
+}
+
+func (m *mockContractEngine) SuccessStatus(raw []byte, method, path string) (int, bool) {
+	return m.successStatus, m.successStatus != 0
 }
 
 func (m *mockContractEngine) ValidateRequest(raw []byte, req *usecase.RequestData) []string {

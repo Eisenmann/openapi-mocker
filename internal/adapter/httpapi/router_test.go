@@ -79,6 +79,20 @@ func (m *memProjectRepo) SetValidationMode(id string, mode domain.ValidationMode
 	return p, nil
 }
 
+func (m *memProjectRepo) SetStateMode(id string, mode domain.StateMode) (*domain.Project, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	p, ok := m.projects[id]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+
+	p.StateMode = mode
+
+	return p, nil
+}
+
 func (m *memProjectRepo) Delete(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -346,6 +360,10 @@ type stubEngine struct {
 
 func (m *stubEngine) ValidateRequest(raw []byte, req *usecase.RequestData) []string {
 	return nil
+}
+
+func (m *stubEngine) SuccessStatus(raw []byte, method, path string) (int, bool) {
+	return 0, false
 }
 
 func (m *stubEngine) Validate(raw []byte) usecase.ValidationResult {

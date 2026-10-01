@@ -156,6 +156,13 @@ func (s *MockServingService) respond(projectID, raw, pathTemplate string, req *M
 		return s.fromRule(rule)
 	}
 
+	if s.cfg.state != nil {
+		resp, ok := s.cfg.state.Handle(projectID, raw, pathTemplate, req)
+		if ok {
+			return resp
+		}
+	}
+
 	// Fallback: no rule configured manually or via LLM — example from schema, 200.
 	status := "200"
 
