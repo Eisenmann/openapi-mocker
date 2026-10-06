@@ -1,9 +1,11 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/Eisenmann/openapi-mocker/internal/domain"
+	"github.com/Eisenmann/openapi-mocker/internal/usecase"
 )
 
 func (a *api) listMocks(w http.ResponseWriter, r *http.Request) {
@@ -43,7 +45,13 @@ func (a *api) updateMock(w http.ResponseWriter, r *http.Request) {
 
 	err = a.s.Mocks.Update(&m)
 	if err != nil {
-		writeError(w, http.StatusNotFound, err)
+		status := http.StatusNotFound
+		if errors.Is(err, usecase.ErrInvalidMatch) {
+			status = http.StatusBadRequest
+		}
+
+		writeError(w, status, err)
+
 		return
 	}
 

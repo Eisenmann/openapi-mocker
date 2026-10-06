@@ -70,6 +70,23 @@ desktop, in Docker, and in Kubernetes.
      the `tools/call` result as `_meta["openapi-mocker/validationWarnings"]`);
      `enforce` answers `400` with `{"error": ..., "violations": [...]}` (REST)
      or JSON-RPC `-32602` with the violations in `error.data` (MCP). Security schemes are not checked.
+   - **Request matching** — pick a mock by the request instead of the
+     `X-Mock-Scenario` header. A REST rule can carry `match` conditions
+     (`[{"source": "body|query|header|path", "name": "user.role", "op": "equals",
+     "value": "admin"}]`; `source: body` takes a JSON path such as
+     `items[0].id`; ops: `equals` (default), `not_equals`, `contains`, `regex`,
+     `exists`, `not_exists`); it is picked when all its conditions hold.
+     Priority: an explicit `X-Mock-Scenario` first, then the matching rule with
+     the most conditions (the first created on a tie), then the unconditional
+     default rule, then the schema example. A rule with conditions never acts as
+     the default. Conditions are validated when the rule is saved (invalid ones
+     give `400`) and can be edited in the mock editor. For MCP, a tool's
+     `mockResponses` entry may have a `"match"` key, either
+     `{"city": "Oslo"}` (all equal) or the condition array
+     `[{"name": "days", "op": "regex", "value": "^[1-9]"}]` over the tool
+     arguments (`name` is a JSON path); the key is removed from the result, an
+     explicit scenario still wins, then the best matching entry, then
+     `default`. Malformed `match` fails contract validation.
    - **Response templating** — put `{{placeholders}}` in mock rule bodies and
      header values (REST) and in MCP tool `mockResponses`, so one mock reacts
      to the request instead of needing a rule per case. Available:

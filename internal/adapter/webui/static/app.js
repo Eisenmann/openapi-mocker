@@ -503,9 +503,10 @@ async function renderMocksTab(panel, project) {
 
     if (epMocks.length) {
       card.appendChild(el('table', {}, [
-        el('tr', {}, [el('th', {}, 'Scenario'), el('th', {}, 'Status'), el('th', {}, 'Source'), el('th', {}, '')]),
+        el('tr', {}, [el('th', {}, 'Scenario'), el('th', {}, 'Match'), el('th', {}, 'Status'), el('th', {}, 'Source'), el('th', {}, '')]),
         ...epMocks.map(m => el('tr', {}, [
           el('td', {}, m.scenario || 'default'),
+          el('td', {}, (m.match && m.match.length) ? `${m.match.length} condition(s)` : '-'),
           el('td', {}, String(m.statusCode)),
           el('td', {}, m.isLlmGenerated ? '🤖 LLM' : '✍️ manually'),
           el('td', {}, [
@@ -532,12 +533,20 @@ async function openMockEditor(projectId, endpoint, mock) {
   const delay = el('input', { type: 'number', value: mock ? mock.delayMs : 0 });
   const failRate = el('input', { type: 'number', value: mock ? mock.failRatePct : 0 });
   const body = el('textarea', { rows: 10 }, bodyText);
+  const match = el('textarea', {
+    rows: 3,
+    placeholder: '[{"source":"body","name":"user.role","value":"admin"},{"source":"query","name":"mode","op":"regex","value":"^fast"}]',
+  }, mock && mock.match && mock.match.length ? JSON.stringify(mock.match, null, 2) : '');
   const providerSelect = el('select', {}, providers);
   const hints = el('input', { placeholder: 'e.g. Russian names, realistic email' });
 
   modal.appendChild(el('h3', {}, `${isEdit ? 'Edit' : 'New'} Mock: ${endpoint.method} ${endpoint.path}`));
   modal.appendChild(el('label', {}, 'Scenario (X-Mock-Scenario)'));
   modal.appendChild(scenario);
+  modal.appendChild(el('label', {}, 'Match conditions (JSON array, optional)'));
+  modal.appendChild(match);
+  modal.appendChild(el('p', { class: 'muted', style: 'font-size:12px; margin:4px 0 8px;' },
+    'The rule is picked when all conditions hold, no scenario header needed. source: body (JSON path), query, header, path. op: equals (default), not_equals, contains, regex, exists, not_exists. An X-Mock-Scenario header still wins; with several matches the rule with most conditions wins.'));
   modal.appendChild(el('div', { class: 'row' }, [
     el('div', {}, [el('label', {}, 'HTTP Status'), status]),
     el('div', {}, [el('label', {}, 'Delay, ms'), delay]),
@@ -565,8 +574,13 @@ async function openMockEditor(projectId, endpoint, mock) {
     el('button', { class: 'btn btn-secondary', onclick: closeModal }, 'Cancel'),
     el('button', { class: 'btn btn-primary', onclick: async () => {
       try {
+        let conditions = [];
+        if (match.value.trim()) {
+          try { conditions = JSON.parse(match.value); } catch (_) { toast('Match conditions must be a JSON array', 'error'); return; }
+          if (!Array.isArray(conditions)) { toast('Match conditions must be a JSON array', 'error'); return; }
+        }
         const payload = {
-          projectId, path: endpoint.path, method: endpoint.method,
+          projectId, path: endpoint.path, method: endpoint.method, match: conditions,
           scenario: scenario.value || 'default',
           statusCode: Number(status.value) || 200,
           contentType: 'application/json',

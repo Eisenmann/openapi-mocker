@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/Eisenmann/openapi-mocker/internal/usecase"
 )
@@ -137,21 +138,49 @@ func parse(raw []byte) (*manifest, error) {
 		return nil, errNoTools
 	}
 
-	seen := map[string]bool{}
-
-	for i, t := range m.Tools {
-		if t.Name == "" {
-			return nil, fmt.Errorf("tool %d: %w", i, errToolNameRequired)
-		}
-
-		if seen[t.Name] {
-			return nil, fmt.Errorf("tool %q: %w", t.Name, errDuplicateTool)
-		}
-
-		seen[t.Name] = true
+	err = validateTools(m.Tools)
+	if err != nil {
+		return nil, err
 	}
 
 	return m, nil
+}
+
+// checkMatches reports a malformed "match" in any of the tool's responses.
+func (t *manifestTool) checkMatches() error {
+	for key, raw := range t.MockResponses {
+		_, _, err := splitMatch(raw)
+		if err != nil {
+			return fmt.Errorf("mockResponses.%s: %w", key, err)
+		}
+	}
+
+	return nil
+}
+
+// validateTools checks tool names and mock-response conditions.
+func validateTools(tools []manifestTool) error {
+	seen := map[string]bool{}
+
+	for i := range tools {
+		t := &tools[i]
+		if t.Name == "" {
+			return fmt.Errorf("tool %d: %w", i, errToolNameRequired)
+		}
+
+		if seen[t.Name] {
+			return fmt.Errorf("tool %q: %w", t.Name, errDuplicateTool)
+		}
+
+		seen[t.Name] = true
+
+		err := t.checkMatches()
+		if err != nil {
+			return fmt.Errorf("tool %q: %w", t.Name, err)
+		}
+	}
+
+	return nil
 }
 
 // Validate reports manifest problems as a structured result (never panics,
@@ -457,7 +486,7 @@ func callTool(m *manifest, r *jsonrpcRequest, st *callState) ([]byte, error) {
 		return respondErrData(r.ID, codeInvalidParams, "invalid params for tool "+p.Name, violations)
 	}
 
-	result, ok := tool.mockResponse(st.scenario)
+	result, ok := tool.mockResponse(st.scenario, p.Arguments)
 	if !ok {
 		return respondErr(r.ID, codeInternalError, "no mock response configured for tool: "+p.Name)
 	}
@@ -483,34 +512,94 @@ func (m *manifest) findTool(name string) (manifestTool, bool) {
 	return manifestTool{Name: "", Description: "", InputSchema: nil, MockResponses: nil}, false
 }
 
-// mockResponse resolves the mock result for the scenario. The lookup order
-// is: the explicit scenario, then "default". When no scenario was requested
-// and the tool declares exactly one response without a "default" key, that
-// single response is used. A requested scenario the tool does not declare
-// falls back to "default" only (like REST mock rules), never to an
-// unrelated lone response.
-func (t *manifestTool) mockResponse(scenario string) (map[string]any, bool) {
+// mockResponse resolves the mock result for a tool call. The lookup order
+// is: the explicit scenario; then the conditional entry (one with a "match")
+// whose conditions all hold for the call's arguments - the one with the most
+// conditions wins, ties go to the lexically first key; then "default"; then,
+// when no scenario was requested and the tool declares exactly one
+// unconditional response, that response. A requested scenario the tool does
+// not declare falls through to the same conditional/"default" lookup (like
+// REST mock rules), never to an unrelated lone response.
+func (t *manifestTool) mockResponse(scenario string, args json.RawMessage) (map[string]any, bool) {
 	if scenario != "" {
-		if raw, ok := t.MockResponses[scenario]; ok {
-			if res, ok := decodeMock(raw); ok {
-				return res, true
-			}
-		}
-	}
-
-	if raw, ok := t.MockResponses["default"]; ok {
-		if res, ok := decodeMock(raw); ok {
+		if res, ok := t.entry(scenario); ok {
 			return res, true
 		}
 	}
 
-	if scenario == "" && len(t.MockResponses) == 1 {
-		for _, raw := range t.MockResponses {
-			return decodeMock(raw)
-		}
+	if key, ok := t.bestMatch(args); ok {
+		return t.entry(key)
+	}
+
+	if res, ok := t.entry("default"); ok {
+		return res, true
+	}
+
+	if scenario == "" {
+		return t.loneResponse()
 	}
 
 	return nil, false
+}
+
+// entry decodes the response stored under key, ignoring its conditions.
+func (t *manifestTool) entry(key string) (map[string]any, bool) {
+	raw, ok := t.MockResponses[key]
+	if !ok {
+		return nil, false
+	}
+
+	_, body, err := splitMatch(raw)
+	if err != nil {
+		return nil, false
+	}
+
+	return decodeMock(body)
+}
+
+// bestMatch returns the key of the conditional entry that matches args best.
+func (t *manifestTool) bestMatch(args json.RawMessage) (string, bool) {
+	keys := make([]string, 0, len(t.MockResponses))
+	for k := range t.MockResponses {
+		keys = append(keys, k)
+	}
+
+	sort.Strings(keys)
+
+	best, bestConds := "", 0
+
+	for _, k := range keys {
+		conds, _, err := splitMatch(t.MockResponses[k])
+		if err != nil || len(conds) <= bestConds {
+			continue
+		}
+
+		if matchesArguments(conds, args) {
+			best, bestConds = k, len(conds)
+		}
+	}
+
+	return best, bestConds > 0
+}
+
+// loneResponse returns the tool's only unconditional response.
+func (t *manifestTool) loneResponse() (map[string]any, bool) {
+	var key string
+
+	count := 0
+
+	for k, raw := range t.MockResponses {
+		conds, _, err := splitMatch(raw)
+		if err == nil && len(conds) == 0 {
+			key, count = k, count+1
+		}
+	}
+
+	if count != 1 {
+		return nil, false
+	}
+
+	return t.entry(key)
 }
 
 // decodeMock converts a stored mock value into a tools/call result object.

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Eisenmann/openapi-mocker/internal/domain"
 )
 
 // TemplateEngine renders {{placeholders}} in mock responses, so one mock can
@@ -194,26 +196,7 @@ func encodeJSON(v any) []byte {
 }
 
 // textOf renders a value as plain text (objects and arrays as JSON).
-func textOf(v any) string {
-	switch x := v.(type) {
-	case nil:
-		return ""
-	case string:
-		return x
-	case json.Number:
-		return x.String()
-	case int:
-		return strconv.Itoa(x)
-	case int64:
-		return strconv.FormatInt(x, 10)
-	case float64:
-		return strconv.FormatFloat(x, 'f', -1, 64)
-	case bool:
-		return strconv.FormatBool(x)
-	default:
-		return string(encodeJSON(v))
-	}
-}
+func textOf(v any) string { return domain.ValueText(v) }
 
 // value evaluates one placeholder. ok is false when the tag is not a known
 // placeholder (it is then left in the output unchanged).
@@ -309,22 +292,24 @@ func firstValue(m map[string][]string, name string, header bool) any {
 // bodyValue returns the request body, or the value at a dotted path
 // ("user.name", "items[0].id") inside it. Missing values are nil.
 func (c *TemplateContext) bodyValue(path string) any {
+	v, _ := c.bodyLookup(path)
+
+	return v
+}
+
+// bodyLookup is bodyValue that also reports whether the value exists.
+func (c *TemplateContext) bodyLookup(path string) (v any, found bool) {
 	c.parseBody()
 
 	if path == "" {
 		if c.body == nil && len(c.Body) > 0 {
-			return string(c.Body)
+			return string(c.Body), true
 		}
 
-		return c.body
+		return c.body, len(c.Body) > 0
 	}
 
-	cur := c.body
-	for _, seg := range strings.FieldsFunc(path, func(r rune) bool { return r == '.' || r == '[' || r == ']' }) {
-		cur = step(cur, seg)
-	}
-
-	return cur
+	return domain.LookupJSONPath(c.body, path)
 }
 
 // parseBody decodes the request body once (leaving nil when it is not JSON).
@@ -340,23 +325,6 @@ func (c *TemplateContext) parseBody() {
 
 	if dec.Decode(&c.body) != nil {
 		c.body = nil
-	}
-}
-
-// step descends one path segment into a decoded JSON value (nil when absent).
-func step(cur any, seg string) any {
-	switch x := cur.(type) {
-	case map[string]any:
-		return x[seg]
-	case []any:
-		i, err := strconv.Atoi(seg)
-		if err != nil || i < 0 || i >= len(x) {
-			return nil
-		}
-
-		return x[i]
-	default:
-		return nil
 	}
 }
 
