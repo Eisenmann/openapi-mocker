@@ -36,6 +36,7 @@ type Services struct {
 	State          *usecase.StateService
 	Codegen        *usecase.CodegenService
 	Logs           *usecase.LogService
+	Drift          *usecase.DriftService
 	CodeGenAgent   CodeGenAgentPort
 }
 

@@ -38,6 +38,7 @@ func (a *api) handleMock(w http.ResponseWriter, r *http.Request, path string) {
 		return
 	}
 
+	//nolint:contextcheck // the request context travels in MockRequest.Context.
 	resp := a.s.MockServing.ServeRequest(r.PathValue("projectId"), &usecase.MockRequest{
 		Method:   r.Method,
 		Path:     path,
@@ -45,6 +46,7 @@ func (a *api) handleMock(w http.ResponseWriter, r *http.Request, path string) {
 		Query:    r.URL.Query(),
 		Header:   r.Header,
 		Body:     body,
+		Context:  r.Context(),
 
 		SkipValidation: false,
 	})

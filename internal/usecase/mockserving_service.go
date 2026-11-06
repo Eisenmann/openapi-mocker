@@ -1,10 +1,12 @@
 package usecase
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Eisenmann/openapi-mocker/internal/domain"
@@ -23,6 +25,14 @@ type MockServingService struct {
 	engine    ContractEngine
 	cfg       servingConfig
 	templates *TemplateEngine
+
+	// recordMu serializes recording, so concurrent identical requests save
+	// one rule.
+	recordMu sync.Mutex
+	// driftSem bounds the drift checks running at once; driftWG lets WaitDrift
+	// wait for them.
+	driftSem chan struct{}
+	driftWG  sync.WaitGroup
 }
 
 // MockRequest is an incoming mock-server request. Query, Header and Body feed
@@ -37,6 +47,9 @@ type MockRequest struct {
 	// SkipValidation serves the request without checking it against the
 	// contract, whatever the project's validation mode is.
 	SkipValidation bool
+	// Context cancels a request forwarded upstream when the client goes away.
+	// Nil means context.Background().
+	Context context.Context //nolint:containedctx // a request value, like http.Request's.
 }
 
 func NewMockServingService(
@@ -53,6 +66,7 @@ func NewMockServingService(
 		engine:    engine,
 		cfg:       newServingConfig(opts),
 		templates: NewTemplateEngine(),
+		driftSem:  make(chan struct{}, maxParallelDrifts),
 	}
 }
 
@@ -101,6 +115,8 @@ func (s *MockServingService) ServeRequest(projectID string, req *MockRequest) Mo
 	if len(violations) > 0 {
 		resp = withWarnings(resp, violations)
 	}
+
+	s.startDrift(projectID, contract.Raw, req, resp)
 
 	return s.finish(projectID, method, path, resp)
 }
@@ -159,6 +175,10 @@ func (s *MockServingService) respond(projectID, raw, pathTemplate string, req *M
 		return s.fromRule(rule, tc)
 	}
 
+	if resp, ok := s.proxy(projectID, pathTemplate, req, tc); ok {
+		return resp
+	}
+
 	if s.cfg.state != nil {
 		resp, ok := s.cfg.state.Handle(projectID, raw, pathTemplate, req)
 		if ok {
@@ -181,13 +201,14 @@ func (s *MockServingService) respond(projectID, raw, pathTemplate string, req *M
 
 	return &MockResponse{
 		StatusCode: code, ContentType: nonEmpty(contentType, ContentTypeJSON),
-		Body: body, Source: "schema-example", Matched: true,
+		Body: body, Source: SourceSchemaExample, Matched: true,
 	}
 }
 
 // findRule picks the mock rule for the operation. An explicit scenario wins;
 // otherwise the rule with the most conditions that all match the request;
-// otherwise the unconditional default rule.
+// otherwise the rule recorded for exactly this request; otherwise the
+// unconditional default rule.
 func (s *MockServingService) findRule(
 	projectID, pathTemplate, method, scenario string, tc *TemplateContext,
 ) *domain.MockRule {
@@ -207,6 +228,10 @@ func (s *MockServingService) findRule(
 		return best
 	}
 
+	if rec := recordedRule(rules, tc); rec != nil {
+		return rec
+	}
+
 	return defaultRule(rules)
 }
 
@@ -221,6 +246,8 @@ func explicitRule(rules []*domain.MockRule, scenario string) *domain.MockRule {
 		return nil
 	case ScenarioDefault:
 		return defaultRule(rules)
+	case ScenarioRecorded:
+		return nil // recorded rules answer the request they were recorded from, not a name.
 	}
 
 	for _, m := range rules {
@@ -303,10 +330,14 @@ func (s *MockServingService) fromRule(rule *domain.MockRule, tc *TemplateContext
 
 	contentType := nonEmpty(rule.ContentType, ContentTypeJSON)
 
+	headers, body := rule.Headers, rule.Body
+	if !rule.Raw {
+		headers, body = s.renderHeaders(headers, tc), s.renderBody(body, contentType, tc)
+	}
+
 	resp := &MockResponse{
-		StatusCode: code, ContentType: contentType,
-		Headers: s.renderHeaders(rule.Headers, tc), Body: []byte(s.renderBody(rule.Body, contentType, tc)),
-		DelayMs: delay, Source: "rule", MatchedRule: rule.ID, Matched: true,
+		StatusCode: code, ContentType: contentType, Headers: headers, Body: []byte(body),
+		DelayMs: delay, Source: SourceRule, MatchedRule: rule.ID, Matched: true,
 	}
 
 	if fault != "" {
@@ -342,7 +373,7 @@ func (s *MockServingService) finish(projectID, method, path string, resp *MockRe
 	s.logs.Add(&domain.RequestLog{
 		ProjectID: projectID, Method: method, Path: path,
 		StatusCode: resp.StatusCode, MatchedRule: resp.MatchedRule, Matched: resp.Matched,
-		Violations: resp.Violations, Fault: resp.Fault, Timestamp: time.Now().UTC(),
+		Violations: resp.Violations, Fault: resp.Fault, Source: resp.Source, Timestamp: time.Now().UTC(),
 	})
 
 	return *resp

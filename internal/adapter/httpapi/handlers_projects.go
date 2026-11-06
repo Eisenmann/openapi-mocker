@@ -41,11 +41,15 @@ func (a *api) getProject(w http.ResponseWriter, r *http.Request) {
 
 // updateProject changes project settings. Only the fields present in the
 // JSON body are modified: validationMode (off, warn or enforce) and stateMode
-// (off, memory or persisted).
+// (off, memory or persisted), and the proxy settings upstreamUrl, proxyMode
+// (off, forward or record) and driftCheck.
 func (a *api) updateProject(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ValidationMode *domain.ValidationMode `json:"validationMode"`
 		StateMode      *domain.StateMode      `json:"stateMode"`
+		UpstreamURL    *string                `json:"upstreamUrl"`
+		ProxyMode      *domain.ProxyMode      `json:"proxyMode"`
+		DriftCheck     *bool                  `json:"driftCheck"`
 	}
 
 	err := readJSON(r, &body)
@@ -66,6 +70,16 @@ func (a *api) updateProject(w http.ResponseWriter, r *http.Request) {
 
 	if body.StateMode != nil {
 		_, err = a.s.Projects.SetStateMode(id, *body.StateMode)
+		if err != nil {
+			writeError(w, usecase.StatusFromError(err), err)
+			return
+		}
+	}
+
+	if body.UpstreamURL != nil || body.ProxyMode != nil || body.DriftCheck != nil {
+		_, err = a.s.Projects.UpdateProxy(id, usecase.ProxyPatch{
+			UpstreamURL: body.UpstreamURL, Mode: body.ProxyMode, DriftCheck: body.DriftCheck,
+		})
 		if err != nil {
 			writeError(w, usecase.StatusFromError(err), err)
 			return

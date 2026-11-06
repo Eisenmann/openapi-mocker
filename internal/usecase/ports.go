@@ -24,6 +24,8 @@ type ProjectRepository interface {
 	SetValidationMode(id string, mode domain.ValidationMode) (*domain.Project, error)
 	// SetStateMode updates whether (and where) the project keeps mock state.
 	SetStateMode(id string, mode domain.StateMode) (*domain.Project, error)
+	// SetProxy updates the upstream, proxy mode and drift check of the project.
+	SetProxy(id string, cfg domain.ProxyConfig) (*domain.Project, error)
 	// Delete removes the project and cascades deletion of all its contracts/mocks.
 	// This is a referential-integrity concern of the store, not a usecase business rule.
 	Delete(id string) error
@@ -55,6 +57,37 @@ type ProviderRepository interface {
 type LogRepository interface {
 	Add(l *domain.RequestLog)
 	ListLogs(projectID string, limit int) []*domain.RequestLog
+}
+
+// DriftRepository stores the drift reports of the projects, newest last. It
+// keeps a bounded number of reports per project.
+type DriftRepository interface {
+	AddDrift(r *domain.DriftReport)
+	// ListDrift returns the newest reports first.
+	ListDrift(projectID string, limit int) []*domain.DriftReport
+	ClearDrift(projectID string)
+}
+
+// UpstreamRequest is a request to the real server behind a project.
+type UpstreamRequest struct {
+	Method string
+	// URL is the complete URL, query included.
+	URL    string
+	Header map[string][]string
+	Body   []byte
+}
+
+// UpstreamResponse is the real server's answer.
+type UpstreamResponse struct {
+	StatusCode int
+	Header     map[string][]string
+	Body       []byte
+}
+
+// UpstreamClient sends requests to the real server (the port over net/http).
+// It does not follow redirects: they are returned as they are.
+type UpstreamClient interface {
+	Do(ctx context.Context, req *UpstreamRequest) (*UpstreamResponse, error)
 }
 
 // ---------- Contract engine (port over a specific OpenAPI library) ----------.

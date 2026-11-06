@@ -19,4 +19,8 @@ type RequestLog struct {
 	// Fault names the fault injected into this request (drop, timeout,
 	// error, garbage, truncated or empty); empty for a normal response.
 	Fault string `json:"fault,omitempty"`
+	// Source says what answered the request: "rule", "schema-example",
+	// "request-validation", a chaos source, or "proxy-forward",
+	// "proxy-record" or "proxy-error".
+	Source string `json:"source,omitempty"`
 }

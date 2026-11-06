@@ -55,6 +55,34 @@ desktop, in Docker, and in Kubernetes.
 11. Additional features:
    - **Response scenarios** (`X-Mock-Scenario`) — multiple response variants
      for one endpoint (happy path, empty, error…), selected by a header.
+   - **Record & replay proxy** — set an upstream base URL and `proxyMode` on
+     the project (**Proxy & Drift** tab, or `PATCH /api/projects/{id}` with
+     `upstreamUrl`, `proxyMode`, `driftCheck`). A request that no mock rule
+     answers (neither `X-Mock-Scenario`, a `match` rule, a recording nor a
+     default rule) is sent to the upstream, the request path being appended to
+     its URL; query, body and headers (including `Authorization`) are passed on,
+     `X-Mock-*` and hop-by-hop headers are not. `forward` returns the upstream
+     answer; `record` also saves it as a mock rule (scenario `recorded`, served
+     verbatim without `{{placeholders}}`) that answers exactly that request
+     (method, path, query and body; JSON compared structurally) from then on.
+     5xx answers, non-UTF-8 or larger-than-1 MB bodies and request bodies over
+     64 KB are not recorded; `Set-Cookie`, `Date` and other connection headers
+     are dropped. Recorded rules are ordinary rules: edit or delete them in
+     **Mock Data**. Answers are marked `X-Mock-Source: proxy-forward` /
+     `proxy-record`; an unreachable upstream gives `502` (`proxy-error`) and a
+     request that comes back to the mock server through the upstream URL gives
+     `508`. REST only (not GraphQL or MCP). Recorded bodies can contain secrets
+     or personal data, and the server requests the configured URL (including
+     private addresses): point it only at hosts you trust.
+   - **Contract drift detection** — with `driftCheck` on, a `GET`/`HEAD` that a
+     mock rule or the contract example answered is replayed against the upstream
+     in the background (never delaying the mock). The live answer is compared
+     with the mock's: status, content type and the structure of JSON bodies
+     (`missing-in-live`, `extra-in-live`, `type-mismatch` with the JSON path;
+     values are ignored, arrays are compared by their first element), and it is
+     validated against the contract (`contract`). Reports are listed in the UI
+     and by `GET /api/projects/{id}/drift?limit=` (newest first, last 1000
+     kept), cleared with `DELETE`. Unsafe methods are never replayed.
    - **Fault injection** — per mock rule (REST), also in the mock editor, for
      testing client resilience: latency (`delayMs` plus a random
      `fault.jitterMs`), injected errors (`failRatePct`, with `fault.errorStatuses`
@@ -197,7 +225,7 @@ kubectl -n openapi-mocker port-forward svc/openapi-mocker 8080:80
 | Method / Path | Purpose |
 |---|---|
 | `GET/POST /api/projects` | list / create project |
-| `GET/PATCH/DELETE /api/projects/{id}` | project (PATCH changes `validationMode` and `stateMode`) |
+| `GET/PATCH/DELETE /api/projects/{id}` | project (PATCH changes `validationMode`, `stateMode`, `upstreamUrl`, `proxyMode`, `driftCheck`) |
 | `GET/POST /api/projects/{id}/contract` | get / publish active contract (JSON body may include `format`: `graphql`/`yaml`/`json`/`mcp`; auto-detected when omitted) |
 | `GET /api/projects/{id}/contract/versions` | version history |
 | `GET /api/projects/{id}/contract/versions/{version}` | contents of a specific version |
@@ -224,6 +252,7 @@ kubectl -n openapi-mocker port-forward svc/openapi-mocker 8080:80
 | `GET /api/projects/{id}/codegen/server` | download Go server zip |
 | `GET /api/projects/{id}/codegen/client` | download Go client zip |
 | `GET /api/projects/{id}/logs` | recent mock requests |
+| `GET/DELETE /api/projects/{id}/drift` | contract-drift reports of the proxy (list / clear) |
 | `ANY /mock/{projectId}/**` | the mock server itself (by project contract) |
 
 ```bash

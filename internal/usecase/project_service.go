@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/Eisenmann/openapi-mocker/internal/domain"
@@ -56,6 +57,48 @@ func (s *ProjectService) SetStateMode(id string, mode domain.StateMode) (*domain
 	}
 
 	return s.repo.SetStateMode(id, mode)
+}
+
+// ProxyPatch is a partial change of a project's proxy settings; nil fields
+// keep their current value.
+type ProxyPatch struct {
+	UpstreamURL *string
+	Mode        *domain.ProxyMode
+	DriftCheck  *bool
+}
+
+// UpdateProxy changes the project's record/replay and drift-detection
+// settings and validates the result as a whole.
+func (s *ProjectService) UpdateProxy(id string, patch ProxyPatch) (*domain.Project, error) {
+	p, err := s.repo.Get(id)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg := domain.ProxyConfig{UpstreamURL: p.UpstreamURL, Mode: p.ProxyMode, DriftCheck: p.DriftCheck}
+
+	if patch.UpstreamURL != nil {
+		cfg.UpstreamURL = strings.TrimSpace(*patch.UpstreamURL)
+	}
+
+	if patch.Mode != nil {
+		cfg.Mode = *patch.Mode
+	}
+
+	if patch.DriftCheck != nil {
+		cfg.DriftCheck = *patch.DriftCheck
+	}
+
+	if cfg.Mode == "" {
+		cfg.Mode = domain.ProxyOff
+	}
+
+	err = cfg.Validate()
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidProxy, err)
+	}
+
+	return s.repo.SetProxy(id, cfg)
 }
 
 func (s *ProjectService) Delete(id string) error {

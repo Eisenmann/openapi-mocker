@@ -33,6 +33,7 @@ var (
 	_ usecase.MockRepository     = (*Store)(nil)
 	_ usecase.ProviderRepository = (*Store)(nil)
 	_ usecase.LogRepository      = (*Store)(nil)
+	_ usecase.DriftRepository    = (*Store)(nil)
 )
 
 type data struct {
@@ -41,6 +42,7 @@ type data struct {
 	Mocks     map[string]*domain.MockRule    `json:"mocks"`
 	Providers map[string]*domain.LLMProvider `json:"providers"`
 	Logs      []*domain.RequestLog           `json:"logs"`
+	Drifts    []*domain.DriftReport          `json:"drifts"`
 }
 
 type Store struct {
@@ -63,6 +65,7 @@ func New(dir string) (*Store, error) {
 			Mocks:     map[string]*domain.MockRule{},
 			Providers: map[string]*domain.LLMProvider{},
 			Logs:      []*domain.RequestLog{},
+			Drifts:    []*domain.DriftReport{},
 		},
 	}
 	err = s.load()
@@ -174,6 +177,22 @@ func (s *Store) SetStateMode(id string, mode domain.StateMode) (*domain.Project,
 	return p, s.save()
 }
 
+// SetProxy updates the project's upstream, proxy mode and drift check.
+func (s *Store) SetProxy(id string, cfg domain.ProxyConfig) (*domain.Project, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	p, ok := s.d.Projects[id]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+
+	p.UpstreamURL, p.ProxyMode, p.DriftCheck = cfg.UpstreamURL, cfg.Mode, cfg.DriftCheck
+	p.UpdatedAt = time.Now().UTC()
+
+	return p, s.save()
+}
+
 func (s *Store) Delete(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -190,6 +209,8 @@ func (s *Store) Delete(id string) error {
 			delete(s.d.Mocks, k)
 		}
 	}
+
+	s.d.Drifts = dropDrifts(s.d.Drifts, id)
 
 	return s.save()
 }
@@ -435,4 +456,59 @@ func (s *Store) ListLogs(projectID string, limit int) []*domain.RequestLog {
 	}
 
 	return out
+}
+
+// ---------- usecase.DriftRepository ----------.
+
+// maxDriftReports bounds how many drift reports the store keeps in total.
+const maxDriftReports = 1000
+
+func (s *Store) AddDrift(r *domain.DriftReport) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	r.ID = idgen.New()
+	s.d.Drifts = append(s.d.Drifts, r)
+
+	if len(s.d.Drifts) > maxDriftReports {
+		s.d.Drifts = s.d.Drifts[len(s.d.Drifts)-maxDriftReports:]
+	}
+
+	_ = s.save()
+}
+
+func (s *Store) ListDrift(projectID string, limit int) []*domain.DriftReport {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	out := make([]*domain.DriftReport, 0)
+
+	for i := len(s.d.Drifts) - 1; i >= 0 && len(out) < limit; i-- {
+		if s.d.Drifts[i].ProjectID == projectID {
+			out = append(out, s.d.Drifts[i])
+		}
+	}
+
+	return out
+}
+
+func (s *Store) ClearDrift(projectID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.d.Drifts = dropDrifts(s.d.Drifts, projectID)
+	_ = s.save()
+}
+
+// dropDrifts returns the reports of the other projects.
+func dropDrifts(all []*domain.DriftReport, projectID string) []*domain.DriftReport {
+	kept := make([]*domain.DriftReport, 0, len(all))
+
+	for _, r := range all {
+		if r.ProjectID != projectID {
+			kept = append(kept, r)
+		}
+	}
+
+	return kept
 }

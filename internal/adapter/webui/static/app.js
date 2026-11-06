@@ -135,6 +135,7 @@ function renderContent() {
     ['state', 'Mock State'],
     ['llm', 'LLM Providers'],
     ['codegen', 'Codegen'],
+    ['proxy', 'Proxy & Drift'],
     ['logs', 'Try It / Logs'],
   ];
 
@@ -162,6 +163,7 @@ function renderContent() {
     case 'state': renderStateTab(panel, project); break;
     case 'llm': renderLLMTab(panel, project); break;
     case 'codegen': renderCodegenTab(panel, project); break;
+    case 'proxy': renderProxyTab(panel, project); break;
     case 'logs': renderLogsTab(panel, project); break;
   }
 }
@@ -506,10 +508,11 @@ async function renderMocksTab(panel, project) {
         el('tr', {}, [el('th', {}, 'Scenario'), el('th', {}, 'Match'), el('th', {}, 'Status'), el('th', {}, 'Faults'), el('th', {}, 'Source'), el('th', {}, '')]),
         ...epMocks.map(m => el('tr', {}, [
           el('td', {}, m.scenario || 'default'),
-          el('td', {}, (m.match && m.match.length) ? `${m.match.length} condition(s)` : '-'),
+          el('td', {}, m.recording ? m.recording.request : ((m.match && m.match.length) ? `${m.match.length} condition(s)` : '-')),
           el('td', {}, String(m.statusCode)),
           el('td', {}, faultSummary(m)),
-          el('td', {}, m.isLlmGenerated ? '🤖 LLM' : '✍️ manually'),
+          el('td', m.recording ? { title: `${m.recording.request}\nrecorded ${new Date(m.recording.recordedAt).toLocaleString()}` } : {},
+            m.recording ? '📼 recorded' : (m.isLlmGenerated ? '🤖 LLM' : '✍️ manually')),
           el('td', {}, [
             el('button', { class: 'btn btn-secondary btn-sm', onclick: () => openMockEditor(project.id, ep, m) }, 'Edit'),
             ' ',
@@ -558,6 +561,9 @@ async function openMockEditor(projectId, endpoint, mock) {
     el('option', { value: 'empty' }, 'empty body'),
   ]);
   malformedMode.value = fault.malformedMode || 'garbage';
+  const contentType = el('input', { placeholder: 'application/json', value: mock && mock.contentType ? mock.contentType : 'application/json' });
+  const rawBody = el('input', { type: 'checkbox' });
+  rawBody.checked = !!(mock && mock.raw);
   const body = el('textarea', { rows: 10 }, bodyText);
   const match = el('textarea', {
     rows: 3,
@@ -594,8 +600,13 @@ async function openMockEditor(projectId, endpoint, mock) {
     el('div', {}, [el('label', {}, '% Malformed bodies'), malformedRate]),
     el('div', {}, [el('label', {}, 'Malformed as'), malformedMode]),
   ]));
-  modal.appendChild(el('label', {}, 'Response Body (JSON)'));
+  modal.appendChild(el('label', {}, 'Content-Type'));
+  modal.appendChild(contentType);
+  modal.appendChild(el('label', {}, 'Response Body'));
   modal.appendChild(body);
+  modal.appendChild(el('label', { style: 'display:flex; gap:6px; align-items:center; margin-top:6px;' }, [
+    rawBody, 'Serve verbatim (do not fill in {{placeholders}}; always on for recorded mocks)',
+  ]));
   modal.appendChild(el('p', { class: 'muted', style: 'font-size:12px; margin:4px 0 0;' },
     'Placeholders: {{request.body.name}} {{request.query.x}} {{request.header.X-Y}} {{path.id}} {{uuid}} {{now}} {{now +2h}} {{timestamp}} {{counter}} {{faker.name}} {{faker.email}} {{faker.int 1 100}} {{faker.pick a b c}}'));
   modal.appendChild(el('div', { class: 'card', style: 'margin-top:10px;' }, [
@@ -642,7 +653,10 @@ async function openMockEditor(projectId, endpoint, mock) {
           fault: hasFault ? faultPayload : null,
           scenario: scenario.value || 'default',
           statusCode: Number(status.value) || 200,
-          contentType: 'application/json',
+          contentType: contentType.value.trim() || 'application/json',
+          headers: mock && mock.headers ? mock.headers : {},
+          raw: rawBody.checked,
+          recording: mock && mock.recording ? mock.recording : null,
           body: body.value,
           delayMs: Number(delay.value) || 0,
           failRatePct: Number(failRate.value) || 0,
@@ -837,6 +851,77 @@ function downloadCodegen(projectId, kind) {
   window.open(`/api/projects/${projectId}/codegen/${kind}?lang=go`, '_blank');
 }
 
+// ---------------- Proxy & Drift tab ----------------
+
+const PROXY_MODES = [
+  ['off', 'Off - unmatched requests get a schema example'],
+  ['forward', 'Forward - unmatched requests go to the upstream'],
+  ['record', 'Record - forward, and save each answer as a mock'],
+];
+
+async function renderProxyTab(panel, project) {
+  panel.innerHTML = '';
+  const url = el('input', { placeholder: 'https://api.example.com/v1', value: project.upstreamUrl || '' });
+  const mode = el('select', {}, PROXY_MODES.map(([value, label]) => el('option', { value }, label)));
+  mode.value = project.proxyMode || 'off';
+  const drift = el('input', { type: 'checkbox' });
+  drift.checked = !!project.driftCheck;
+
+  panel.appendChild(el('div', { class: 'card' }, [
+    el('h3', {}, 'Record & replay proxy'),
+    el('p', { class: 'muted' }, 'A request that no mock rule answers is sent to the upstream (the request path is appended to its URL). In record mode the answer is saved as a mock that replays exactly that request (method, path, query and body) from then on. Server errors (5xx) and large or binary bodies are never recorded.'),
+    el('label', {}, 'Upstream base URL'),
+    url,
+    el('label', {}, 'Unmatched requests'),
+    mode,
+    el('label', { style: 'display:flex; gap:6px; align-items:center; margin-top:10px;' }, [
+      drift, 'Contract drift detection: replay GET requests answered by a mock against the upstream and compare',
+    ]),
+    el('p', { class: 'muted', style: 'font-size:12px;' }, 'Status, content type and the structure of JSON bodies (fields and their types, not values) are compared, and the live answer is validated against the contract. Reports are produced in the background; mock answers are never delayed. Recorded bodies may contain secrets or personal data, and the upstream URL is requested from this server: point it only at hosts you trust.'),
+    el('button', { class: 'btn btn-primary', style: 'margin-top:8px;', onclick: async () => {
+      try {
+        const updated = await api(`/api/projects/${project.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ upstreamUrl: url.value.trim(), proxyMode: mode.value, driftCheck: drift.checked }),
+        });
+        Object.assign(project, updated);
+        toast('Proxy settings saved');
+        renderContent();
+      } catch (e) { toast(e.message, 'error'); }
+    }}, 'Save'),
+  ]));
+
+  const reports = await api(`/api/projects/${project.id}/drift?limit=100`);
+  panel.appendChild(el('div', { class: 'card' }, [
+    el('div', { class: 'flex-between' }, [
+      el('h3', {}, 'Drift reports'),
+      el('div', {}, [
+        el('button', { class: 'btn btn-secondary btn-sm', onclick: () => renderContent() }, 'Refresh'),
+        ' ',
+        el('button', { class: 'btn btn-danger btn-sm', onclick: async () => {
+          await api(`/api/projects/${project.id}/drift`, { method: 'DELETE' });
+          renderContent();
+        }}, 'Clear'),
+      ]),
+    ]),
+    reports.length ? el('table', {}, [
+      el('tr', {}, [el('th', {}, 'Time'), el('th', {}, 'Request'), el('th', {}, 'Mock'), el('th', {}, 'Status mock / live'), el('th', {}, 'Result')]),
+      ...reports.map(r => el('tr', {}, [
+        el('td', {}, new Date(r.timestamp).toLocaleTimeString()),
+        el('td', {}, `${r.method} ${r.path}`),
+        el('td', {}, r.mock),
+        el('td', {}, `${r.mockStatus} / ${r.liveStatus || '-'}`),
+        el('td', {}, r.drifted
+          ? el('details', {}, [
+              el('summary', {}, `⚠ ${r.differences.length} difference(s)`),
+              ...r.differences.map(d => el('div', {}, [el('code', {}, d.kind), d.path ? ` ${d.path}` : '', d.mock || d.live ? ` (mock: ${d.mock || '-'}, live: ${d.live || '-'})` : ''])),
+            ])
+          : '✓ in sync'),
+      ])),
+    ]) : el('p', { class: 'muted' }, 'No reports yet. Turn on drift detection and call a mocked GET endpoint.'),
+  ]));
+}
+
 // ---------------- Logs / Try it tab ----------------
 
 async function renderLogsTab(panel, project) {
@@ -851,13 +936,14 @@ async function renderLogsTab(panel, project) {
   panel.appendChild(el('div', { class: 'card' }, [
     el('div', { class: 'flex-between' }, [el('h3', {}, 'Recent Requests'), el('button', { class: 'btn btn-secondary btn-sm', onclick: () => renderContent() }, 'Refresh')]),
     el('table', {}, [
-      el('tr', {}, [el('th', {}, 'Time'), el('th', {}, 'Method'), el('th', {}, 'Path'), el('th', {}, 'Status'), el('th', {}, 'ms'), el('th', {}, 'Validation')]),
+      el('tr', {}, [el('th', {}, 'Time'), el('th', {}, 'Method'), el('th', {}, 'Path'), el('th', {}, 'Status'), el('th', {}, 'ms'), el('th', {}, 'Source'), el('th', {}, 'Validation')]),
       ...logs.map(l => el('tr', {}, [
         el('td', {}, new Date(l.timestamp).toLocaleTimeString()),
         el('td', {}, l.method),
         el('td', {}, l.path),
         el('td', {}, String(l.statusCode)),
         el('td', {}, String(l.durationMs)),
+        el('td', {}, l.source || ''),
         el('td', l.violations && l.violations.length ? { title: l.violations.join('\n') } : {},
           l.violations && l.violations.length ? `⚠ ${l.violations.length} violation(s)` : ''),
       ])),
