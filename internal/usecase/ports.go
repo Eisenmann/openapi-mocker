@@ -223,3 +223,14 @@ type CodeGenerator interface {
 	GenerateServerZip(raw []byte, pkgName string) ([]byte, error)
 	GenerateClientZip(raw []byte, pkgName string) ([]byte, error)
 }
+
+// ChangeDetector finds the changes between two versions of an OpenAPI
+// contract that affect clients (see domain.ContractChange).
+type ChangeDetector interface {
+	BreakingChanges(oldRaw, newRaw string) ([]domain.ContractChange, error)
+}
+
+// AlertNotifier delivers an alert event (a log line, a webhook call...).
+type AlertNotifier interface {
+	Notify(ctx context.Context, eventType string, payload any) error
+}

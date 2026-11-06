@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"log"
+	"os"
 	"strings"
 	"testing"
 
@@ -20,7 +21,7 @@ func TestNew(t *testing.T) {
 func TestNotify(t *testing.T) {
 	var buf bytes.Buffer
 	log.SetOutput(&buf)
-	defer log.SetOutput(nil)
+	defer log.SetOutput(os.Stderr)
 
 	n := New()
 
@@ -49,7 +50,7 @@ func TestNotify(t *testing.T) {
 func TestNotify_WithNilPayload(t *testing.T) {
 	var buf bytes.Buffer
 	log.SetOutput(&buf)
-	defer log.SetOutput(nil)
+	defer log.SetOutput(os.Stderr)
 
 	n := New()
 

@@ -387,8 +387,19 @@ async function diffContractVersions(projectId, fromVersion, toVersion) {
       const color = l.type === 'added' ? '#2ecc71' : l.type === 'removed' ? '#e74c3c' : '#9099b3';
       return el('div', { style: `color:${color};white-space:pre-wrap;font-family:ui-monospace,monospace;font-size:12px;` }, prefix + l.text);
     });
+    const changes = res.breaking || [];
+    const nBreaking = changes.filter(c => c.severity === 'breaking').length;
+    const changeList = changes.length ? el('div', { style: 'margin-bottom:10px;' }, [
+      el('b', { style: `color:${nBreaking ? '#e74c3c' : '#f39c12'};` },
+        nBreaking ? `⛔ ${nBreaking} breaking change(s), ${changes.length - nBreaking} warning(s)` : `⚠ ${changes.length} warning(s), no breaking changes`),
+      ...changes.map(c => el('div', { style: 'font-size:13px;margin-top:4px;' }, [
+        el('span', { style: `color:${c.severity === 'breaking' ? '#e74c3c' : '#f39c12'};font-weight:600;` }, c.severity === 'breaking' ? 'BREAKING ' : 'WARNING '),
+        el('code', {}, c.operation), c.location ? ` (${c.location})` : '', ` — ${c.message}`,
+      ])),
+    ]) : el('p', { class: 'muted', style: 'font-size:13px;' }, 'No changes that affect clients.');
     const modal = el('div', { class: 'modal', style: 'width:720px;' }, [
       el('h3', {}, `Diff: version ${res.fromVersion} → version ${res.toVersion}`),
+      changeList,
       el('div', { style: 'max-height:60vh;overflow-y:auto;background:var(--panel2);border-radius:8px;padding:10px;' }, lines),
       el('div', { class: 'row', style: 'margin-top:16px;justify-content:flex-end;' }, [
         el('button', { class: 'btn btn-secondary', onclick: closeModal }, 'Close'),

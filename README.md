@@ -83,6 +83,30 @@ desktop, in Docker, and in Kubernetes.
      validated against the contract (`contract`). Reports are listed in the UI
      and by `GET /api/projects/{id}/drift?limit=` (newest first, last 1000
      kept), cleared with `DELETE`. Unsafe methods are never replayed.
+   - **Contract-diff alerts** — the diff of two contract versions
+     (`GET /api/projects/{id}/contract/diff`, "Compare with current" in the UI)
+     also lists, under `breaking`, the changes that affect clients of an
+     OpenAPI contract. *Breaking*: a removed operation, successful response or
+     response field, a response field that became optional, a changed type, a
+     new required parameter or request field, a parameter or request field that
+     became required, a request enum value that is no longer accepted.
+     *Warning*: a parameter or request field the server no longer reads, a
+     removed error response, a new response enum value. Publishing (or rolling
+     back to) a version that breaks the previous one sends a
+     `contract.breaking_changes` alert through the notifier: it is logged and,
+     when `ALERT_WEBHOOK_URL` is set, posted there as
+     `{"type", "text", "payload"}` (`text` is a one-line summary that Slack and
+     Mattermost incoming webhooks show; `payload` has the project, the two
+     versions and up to 50 changes, breaking first). Delivery is best effort and
+     never blocks or fails publishing. GraphQL and MCP contracts are not
+     analysed.
+   - **CI check** — `openapi-mocker diff OLD NEW [--fail-on-breaking]
+     [--format text|json]` compares two contract files (YAML or JSON) without
+     starting the server or touching its data. Exit status: `0` ok, `1` breaking
+     changes found with `--fail-on-breaking`, `2` unreadable file or contract.
+     For example, against the contract on the main branch:
+     `git show origin/main:openapi.yaml > /tmp/old.yaml &&
+     openapi-mocker diff /tmp/old.yaml openapi.yaml --fail-on-breaking`.
    - **Fault injection** — per mock rule (REST), also in the mock editor, for
      testing client resilience: latency (`delayMs` plus a random
      `fault.jitterMs`), injected errors (`failRatePct`, with `fault.errorStatuses`
