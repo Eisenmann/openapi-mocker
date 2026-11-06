@@ -3,7 +3,6 @@ package usecase
 import (
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"strconv"
 	"strings"
 	"time"
@@ -287,16 +286,14 @@ func pathParams(pathTemplate, path string) map[string]string {
 }
 
 func (s *MockServingService) fromRule(rule *domain.MockRule, tc *TemplateContext) *MockResponse {
-	// Chaos testing: with probability FailRatePct, return a random 5xx error,
-	// even when the rule describes a successful scenario.
-	if rule.FailRatePct > 0 && rand.Intn(PercentBase) < rule.FailRatePct {
-		code := StatusInternalServerError + rand.Intn(ServerErrorRange) // 500-503
+	settings := settingsOf(rule)
+	delay := settings.latencyMs()
+	fault := rollFault(&settings)
 
-		return &MockResponse{
-			StatusCode: code, ContentType: ContentTypeJSON,
-			Body:    errorBody("injected failure for chaos testing"),
-			DelayMs: rule.DelayMs, Source: "chaos-injection", MatchedRule: rule.ID, Matched: true,
-		}
+	// Chaos testing: some faults replace the rule's response altogether,
+	// even when the rule describes a successful scenario.
+	if resp := faultResponse(rule, &settings, fault, delay); resp != nil {
+		return resp
 	}
 
 	code := rule.StatusCode
@@ -306,11 +303,17 @@ func (s *MockServingService) fromRule(rule *domain.MockRule, tc *TemplateContext
 
 	contentType := nonEmpty(rule.ContentType, ContentTypeJSON)
 
-	return &MockResponse{
+	resp := &MockResponse{
 		StatusCode: code, ContentType: contentType,
 		Headers: s.renderHeaders(rule.Headers, tc), Body: []byte(s.renderBody(rule.Body, contentType, tc)),
-		DelayMs: rule.DelayMs, Source: "rule", MatchedRule: rule.ID, Matched: true,
+		DelayMs: delay, Source: "rule", MatchedRule: rule.ID, Matched: true,
 	}
+
+	if fault != "" {
+		breakBody(resp, fault)
+	}
+
+	return resp
 }
 
 // renderBody fills the {{placeholders}} of a rule body.
@@ -339,7 +342,7 @@ func (s *MockServingService) finish(projectID, method, path string, resp *MockRe
 	s.logs.Add(&domain.RequestLog{
 		ProjectID: projectID, Method: method, Path: path,
 		StatusCode: resp.StatusCode, MatchedRule: resp.MatchedRule, Matched: resp.Matched,
-		Violations: resp.Violations, Timestamp: time.Now().UTC(),
+		Violations: resp.Violations, Fault: resp.Fault, Timestamp: time.Now().UTC(),
 	})
 
 	return *resp

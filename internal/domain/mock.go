@@ -16,9 +16,12 @@ type MockRule struct {
 	ContentType string            `json:"contentType"`
 	Headers     map[string]string `json:"headers"`
 	Body        string            `json:"body"`
-	DelayMs     int               `json:"delayMs"`
-	FailRatePct int               `json:"failRatePct"` // % of random 5xx errors for chaos testing.
-	IsLLMGen    bool              `json:"isLlmGenerated"`
-	CreatedAt   time.Time         `json:"createdAt"`
-	UpdatedAt   time.Time         `json:"updatedAt"`
+	DelayMs     int               `json:"delayMs"`     // base latency of every response.
+	FailRatePct int               `json:"failRatePct"` // % of injected error responses.
+	// Fault holds the rest of the fault injection: latency jitter, timeouts,
+	// dropped connections and malformed bodies. Nil means none.
+	Fault     *Fault    `json:"fault,omitempty"`
+	IsLLMGen  bool      `json:"isLlmGenerated"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }

@@ -74,6 +74,8 @@ type manifestTool struct {
 	Description   string                     `json:"description"`
 	InputSchema   json.RawMessage            `json:"inputSchema"`
 	MockResponses map[string]json.RawMessage `json:"mockResponses"`
+	// Fault declares fault injection for every call of the tool (see fault.go).
+	Fault json.RawMessage `json:"fault"`
 }
 
 // Engine fulfills the usecase.MCPEngine port.
@@ -175,6 +177,11 @@ func validateTools(tools []manifestTool) error {
 		seen[t.Name] = true
 
 		err := t.checkMatches()
+		if err != nil {
+			return fmt.Errorf("tool %q: %w", t.Name, err)
+		}
+
+		err = t.checkFaults()
 		if err != nil {
 			return fmt.Errorf("tool %q: %w", t.Name, err)
 		}
@@ -336,7 +343,9 @@ func mustMarshal(v any) json.RawMessage {
 // status). Notifications produce no output: (nil, nil), and a batch made only
 // of notifications also produces none.
 func (e *Engine) Execute(raw, req []byte, scenario string) ([]byte, error) {
-	return e.run(raw, req, &callState{scenario: scenario, validate: false, enforce: false, violations: nil, render: nil})
+	st := &callState{scenario: scenario, validate: false, enforce: false, violations: nil, render: nil, fault: nil}
+
+	return e.run(raw, req, st)
 }
 
 // ExecuteWith is the general form of Execute and ExecuteValidated: it
@@ -347,7 +356,7 @@ func (e *Engine) ExecuteWith(
 ) (resp []byte, violations []string, err error) {
 	st := &callState{
 		scenario: opts.Scenario, validate: opts.Validate, enforce: opts.Enforce,
-		violations: nil, render: opts.Render,
+		violations: nil, render: opts.Render, fault: opts.Fault,
 	}
 	resp, err = e.run(raw, req, st)
 
@@ -361,7 +370,7 @@ func (e *Engine) ExecuteWith(
 func (e *Engine) ExecuteValidated(
 	raw, req []byte, scenario string, enforce bool,
 ) (resp []byte, violations []string, err error) {
-	st := &callState{scenario: scenario, validate: true, enforce: enforce, violations: nil, render: nil}
+	st := &callState{scenario: scenario, validate: true, enforce: enforce, violations: nil, render: nil, fault: nil}
 	resp, err = e.run(raw, req, st)
 
 	return resp, st.violations, err
@@ -486,9 +495,13 @@ func callTool(m *manifest, r *jsonrpcRequest, st *callState) ([]byte, error) {
 		return respondErrData(r.ID, codeInvalidParams, "invalid params for tool "+p.Name, violations)
 	}
 
-	result, ok := tool.mockResponse(st.scenario, p.Arguments)
+	result, key, ok := tool.resolve(st.scenario, p.Arguments)
 	if !ok {
 		return respondErr(r.ID, codeInternalError, "no mock response configured for tool: "+p.Name)
+	}
+
+	if st.injectsError(&tool, key) {
+		return respondErr(r.ID, codeInternalError, "injected failure for chaos testing")
 	}
 
 	if st.render != nil {
@@ -509,10 +522,11 @@ func (m *manifest) findTool(name string) (manifestTool, bool) {
 		}
 	}
 
-	return manifestTool{Name: "", Description: "", InputSchema: nil, MockResponses: nil}, false
+	return manifestTool{Name: "", Description: "", InputSchema: nil, MockResponses: nil, Fault: nil}, false
 }
 
-// mockResponse resolves the mock result for a tool call. The lookup order
+// resolve picks the mock result for a tool call and returns it with the key of
+// the mockResponses entry it came from. The lookup order
 // is: the explicit scenario; then the conditional entry (one with a "match")
 // whose conditions all hold for the call's arguments - the one with the most
 // conditions wins, ties go to the lexically first key; then "default"; then,
@@ -520,26 +534,28 @@ func (m *manifest) findTool(name string) (manifestTool, bool) {
 // unconditional response, that response. A requested scenario the tool does
 // not declare falls through to the same conditional/"default" lookup (like
 // REST mock rules), never to an unrelated lone response.
-func (t *manifestTool) mockResponse(scenario string, args json.RawMessage) (map[string]any, bool) {
+func (t *manifestTool) resolve(scenario string, args json.RawMessage) (res map[string]any, key string, ok bool) {
 	if scenario != "" {
-		if res, ok := t.entry(scenario); ok {
-			return res, true
+		if res, ok = t.entry(scenario); ok {
+			return res, scenario, true
 		}
 	}
 
-	if key, ok := t.bestMatch(args); ok {
-		return t.entry(key)
+	if best, found := t.bestMatch(args); found {
+		res, ok = t.entry(best)
+
+		return res, best, ok
 	}
 
-	if res, ok := t.entry("default"); ok {
-		return res, true
+	if res, ok = t.entry("default"); ok {
+		return res, "default", true
 	}
 
 	if scenario == "" {
 		return t.loneResponse()
 	}
 
-	return nil, false
+	return nil, "", false
 }
 
 // entry decodes the response stored under key, ignoring its conditions.
@@ -582,10 +598,8 @@ func (t *manifestTool) bestMatch(args json.RawMessage) (string, bool) {
 	return best, bestConds > 0
 }
 
-// loneResponse returns the tool's only unconditional response.
-func (t *manifestTool) loneResponse() (map[string]any, bool) {
-	var key string
-
+// loneResponse returns the tool's only unconditional response and its key.
+func (t *manifestTool) loneResponse() (res map[string]any, key string, ok bool) {
 	count := 0
 
 	for k, raw := range t.MockResponses {
@@ -596,10 +610,12 @@ func (t *manifestTool) loneResponse() (map[string]any, bool) {
 	}
 
 	if count != 1 {
-		return nil, false
+		return nil, "", false
 	}
 
-	return t.entry(key)
+	res, ok = t.entry(key)
+
+	return res, key, ok
 }
 
 // decodeMock converts a stored mock value into a tools/call result object.
