@@ -10,6 +10,10 @@
 //	PORT      - HTTP port (default 8080)
 //	DATA_DIR  - directory for persistent data (default ./data),
 //	            mounted as a volume/PVC in Docker/K8s.
+//	ALERT_WEBHOOK_URL - optional; breaking contract changes are posted there.
+//
+// "openapi-mocker diff OLD NEW [--fail-on-breaking]" compares two contract
+// files and exits (see diff.go).
 package main
 
 import (
@@ -37,6 +41,14 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "diff" {
+		os.Exit(runDiff(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
+	runServer()
+}
+
+func runServer() {
 	port := getEnv("PORT", "8080")
 	dataDir := getEnv("DATA_DIR", "./data")
 
@@ -65,7 +77,14 @@ func main() {
 	}
 
 	stateService := usecase.NewStateService(stateStore, store, contractEngine)
-	contractService := usecase.NewContractService(store, store, contractEngine, llmGateway, validators)
+	// Breaking-change alerts: logged, and posted to ALERT_WEBHOOK_URL when set.
+	alertNotifier, err := notifier.NewWithWebhook(os.Getenv("ALERT_WEBHOOK_URL"))
+	if err != nil {
+		log.Fatalf("invalid ALERT_WEBHOOK_URL: %v", err)
+	}
+
+	contractService := usecase.NewContractService(store, store, contractEngine, llmGateway, validators).
+		WithChangeAlerts(contractEngine, alertNotifier.Alerts())
 	services := httpapi.Services{
 		Projects:  usecase.NewProjectService(store),
 		Contracts: contractService,

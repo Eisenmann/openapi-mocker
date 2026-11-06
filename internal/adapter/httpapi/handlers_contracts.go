@@ -77,6 +77,7 @@ func (a *api) saveContract(w http.ResponseWriter, r *http.Request) {
 		raw, source = body.Raw, body.Source
 	}
 
+	//nolint:contextcheck // alerting runs detached from the request.
 	c, err := a.s.Contracts.Publish(projectID, raw, source)
 	if err != nil {
 		writeError(w, http.StatusUnprocessableEntity, err)
@@ -93,6 +94,7 @@ func (a *api) rollbackContract(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	//nolint:contextcheck // alerting runs detached from the request.
 	c, err := a.s.Contracts.Rollback(r.PathValue("id"), version)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err)

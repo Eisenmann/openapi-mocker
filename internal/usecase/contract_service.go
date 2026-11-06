@@ -14,6 +14,8 @@ type ContractService struct {
 	engine     ContractEngine
 	llm        LLMGateway
 	validators FormatValidators
+	detector   ChangeDetector
+	alerts     AlertNotifier
 }
 
 // FormatValidators bundles the optional format-specific validation engines.
@@ -48,7 +50,19 @@ func NewContractService(
 		engine:     engine,
 		llm:        llm,
 		validators: fv,
+		detector:   nil,
+		alerts:     nil,
 	}
+}
+
+// WithChangeAlerts turns on breaking-change detection: the diff of two
+// versions then lists the changes that affect clients, and publishing or
+// rolling back to a version that breaks the previous one sends an alert.
+// Either argument may be nil: without a notifier changes are only listed.
+func (s *ContractService) WithChangeAlerts(detector ChangeDetector, alerts AlertNotifier) *ContractService {
+	s.detector, s.alerts = detector, alerts
+
+	return s
 }
 
 func (s *ContractService) GetActive(projectID string) (*domain.Contract, error) {
@@ -113,7 +127,11 @@ func (s *ContractService) Publish(projectID, raw, source string) (*domain.Contra
 		source = "manual"
 	}
 
-	return s.contracts.AddVersion(projectID, format, raw, source), nil
+	prev, _ := s.contracts.GetActive(projectID)
+	added := s.contracts.AddVersion(projectID, format, raw, source)
+	s.alertOnBreaking(prev, added)
+
+	return added, nil
 }
 
 // validateFormat runs the validation matching the contract format: OpenAPI
@@ -164,7 +182,11 @@ func (s *ContractService) Rollback(projectID string, version int) (*domain.Contr
 		return nil, err
 	}
 
-	return s.contracts.AddVersion(projectID, old.Format, old.Raw, fmt.Sprintf("rollback-to-v%d", version)), nil
+	prev, _ := s.contracts.GetActive(projectID)
+	added := s.contracts.AddVersion(projectID, old.Format, old.Raw, fmt.Sprintf("rollback-to-v%d", version))
+	s.alertOnBreaking(prev, added)
+
+	return added, nil
 }
 
 // ContractDiff is the result of comparing two versions.
@@ -172,6 +194,9 @@ type ContractDiff struct {
 	FromVersion int        `json:"fromVersion"`
 	ToVersion   int        `json:"toVersion"`
 	Lines       []DiffLine `json:"diff"`
+	// Breaking lists the changes that affect clients (breaking changes and
+	// warnings); empty for formats other than OpenAPI.
+	Breaking []domain.ContractChange `json:"breaking"`
 }
 
 // Diff compares version fromVersion against toVersion; if toVersion == nil,
@@ -197,6 +222,7 @@ func (s *ContractService) Diff(projectID string, fromVersion int, toVersion *int
 		FromVersion: from.Version,
 		ToVersion:   to.Version,
 		Lines:       s.engine.Diff(from.Raw, to.Raw),
+		Breaking:    s.changes(from, to),
 	}, nil
 }
 
