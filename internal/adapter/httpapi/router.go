@@ -25,11 +25,7 @@ func NewRouter(s *Services) http.Handler {
 	})
 
 	// --- projects ---.
-	mux.HandleFunc("GET /api/projects", a.listProjects)
-	mux.HandleFunc("POST /api/projects", a.createProject)
-	mux.HandleFunc("GET /api/projects/{id}", a.getProject)
-	mux.HandleFunc("PATCH /api/projects/{id}", a.updateProject)
-	mux.HandleFunc("DELETE /api/projects/{id}", a.deleteProject)
+	a.registerProjectRoutes(mux)
 
 	// --- contracts ---.
 	mux.HandleFunc("GET /api/projects/{id}/contract", a.getContract)
@@ -67,6 +63,9 @@ func NewRouter(s *Services) http.Handler {
 	mux.HandleFunc("GET /api/projects/{id}/codegen/server", a.codegenServer)
 	mux.HandleFunc("GET /api/projects/{id}/codegen/client", a.codegenClient)
 	mux.HandleFunc("POST /api/projects/{id}/codegen/agent", a.codegenAgent)
+
+	// --- import / export ---.
+	a.registerExchangeRoutes(mux)
 
 	// --- request logs and contract drift ---.
 	a.registerDiagnosticsRoutes(mux)
@@ -118,4 +117,12 @@ func withCORS(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (a *api) registerProjectRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/projects", a.listProjects)
+	mux.HandleFunc("POST /api/projects", a.createProject)
+	mux.HandleFunc("GET /api/projects/{id}", a.getProject)
+	mux.HandleFunc("PATCH /api/projects/{id}", a.updateProject)
+	mux.HandleFunc("DELETE /api/projects/{id}", a.deleteProject)
 }

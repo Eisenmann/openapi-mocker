@@ -14,6 +14,7 @@ type ContractService struct {
 	engine     ContractEngine
 	llm        LLMGateway
 	validators FormatValidators
+	converter  ContractConverter
 	detector   ChangeDetector
 	alerts     AlertNotifier
 }
@@ -50,6 +51,7 @@ func NewContractService(
 		engine:     engine,
 		llm:        llm,
 		validators: fv,
+		converter:  nil,
 		detector:   nil,
 		alerts:     nil,
 	}
@@ -65,6 +67,49 @@ func (s *ContractService) WithChangeAlerts(detector ChangeDetector, alerts Alert
 	return s
 }
 
+// WithConverter turns on conversion of Swagger 2.0 and OpenAPI 3.1 contracts:
+// validating or publishing such a document converts it to OpenAPI 3.0 first.
+func (s *ContractService) WithConverter(c ContractConverter) *ContractService {
+	s.converter = c
+
+	return s
+}
+
+// normalize converts a Swagger 2.0 / OpenAPI 3.1 document to OpenAPI 3.0 when
+// a converter is wired. note says what was done ("" when nothing was).
+func (s *ContractService) normalize(raw string) (converted, note string, err error) {
+	if s.converter == nil || IsGraphQL(raw) || IsMCP(raw) {
+		return raw, "", nil
+	}
+
+	return s.converter.Normalize(raw)
+}
+
+// Export returns the active contract converted to target (ExportOpenAPI3,
+// ExportOpenAPI31 or ExportSwagger2) and encoded as "json" or "yaml".
+func (s *ContractService) Export(projectID, target, format string) (string, error) {
+	switch target {
+	case ExportOpenAPI3, ExportOpenAPI31, ExportSwagger2:
+	default:
+		return "", fmt.Errorf("%w: unknown format %q (use openapi3, openapi31 or swagger2)", ErrInvalidExport, target)
+	}
+
+	c, err := s.contracts.GetActive(projectID)
+	if err != nil {
+		return "", err
+	}
+
+	if c.Format != FormatJSON && c.Format != FormatYAML {
+		return "", fmt.Errorf("%w: only OpenAPI contracts can be converted", ErrInvalidExport)
+	}
+
+	if s.converter == nil {
+		return c.Raw, nil
+	}
+
+	return s.converter.Export(c.Raw, target, format)
+}
+
 func (s *ContractService) GetActive(projectID string) (*domain.Contract, error) {
 	return s.contracts.GetActive(projectID)
 }
@@ -78,6 +123,18 @@ func (s *ContractService) ListVersions(projectID string) []*domain.Contract {
 }
 
 func (s *ContractService) Validate(raw string) ValidationResult {
+	converted, note, err := s.normalize(raw)
+	if err != nil {
+		return ValidationResult{Valid: false, Errors: []string{err.Error()}}
+	}
+
+	res := s.validateNormalized(converted)
+	res.Note = note
+
+	return res
+}
+
+func (s *ContractService) validateNormalized(raw string) ValidationResult {
 	switch detectFormat(raw) {
 	case FormatGraphQL:
 		if s.validators.GraphQL == nil {
@@ -116,15 +173,24 @@ func (s *ContractService) Publish(projectID, raw, source string) (*domain.Contra
 		return nil, ErrContractEmpty
 	}
 
+	raw, note, err := s.normalize(raw)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrContractInvalid, err)
+	}
+
 	format := detectFormat(raw)
 
-	err := s.validateFormat(format, raw)
+	err = s.validateFormat(format, raw)
 	if err != nil {
 		return nil, err
 	}
 
 	if source == "" {
 		source = "manual"
+	}
+
+	if note != "" {
+		source += " (" + note + ")"
 	}
 
 	prev, _ := s.contracts.GetActive(projectID)

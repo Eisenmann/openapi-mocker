@@ -299,7 +299,7 @@ func (o *stateOp) idIsString() bool {
 		return false
 	}
 
-	return s.Properties["id"].Type == "string"
+	return s.Properties["id"].Type == kindString
 }
 
 func stateResponse(code int, body []byte) *MockResponse {

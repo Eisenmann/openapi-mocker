@@ -216,7 +216,7 @@ func (t *TemplateEngine) value(tag string, ctx *TemplateContext) (v any, ok bool
 	switch ns {
 	case "request":
 		return requestValue(rest, ctx)
-	case "path":
+	case wordPath:
 		return pathValue(rest, ctx)
 	case "faker":
 		return fakerValue(rest, args)
@@ -262,7 +262,7 @@ func requestValue(rest string, ctx *TemplateContext) (any, bool) {
 	switch kind {
 	case "method":
 		return ctx.Method, name == ""
-	case "path":
+	case wordPath:
 		return ctx.Path, name == ""
 	case "query":
 		return firstValue(ctx.Query, name, false), name != ""

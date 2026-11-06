@@ -99,6 +99,9 @@ type ValidationResult struct {
 	Errors    []string `json:"errors,omitempty"`
 	PathCount int      `json:"pathCount"`
 	OpCount   int      `json:"operationCount"`
+	// Note says that the contract was converted (Swagger 2.0 or OpenAPI 3.1
+	// to 3.0) before it was validated.
+	Note string `json:"note,omitempty"`
 }
 
 // Endpoint is a brief description of a contract operation.
@@ -233,4 +236,21 @@ type ChangeDetector interface {
 // AlertNotifier delivers an alert event (a log line, a webhook call...).
 type AlertNotifier interface {
 	Notify(ctx context.Context, eventType string, payload any) error
+}
+
+// Targets of ContractConverter.Export.
+const (
+	ExportOpenAPI3  = "openapi3"
+	ExportOpenAPI31 = "openapi31"
+	ExportSwagger2  = "swagger2"
+)
+
+// ContractConverter converts contracts between OpenAPI/Swagger versions.
+type ContractConverter interface {
+	// Normalize brings Swagger 2.0 and OpenAPI 3.1 documents to OpenAPI 3.0.
+	// Other input comes back unchanged with an empty note.
+	Normalize(raw string) (converted, note string, err error)
+	// Export converts an OpenAPI 3.0 contract to target (ExportOpenAPI3,
+	// ExportOpenAPI31 or ExportSwagger2), encoded as "json" or "yaml".
+	Export(raw, target, format string) (string, error)
 }

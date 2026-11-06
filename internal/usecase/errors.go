@@ -23,6 +23,9 @@ var (
 	ErrInvalidMatch            = errors.New("invalid match rule")
 	ErrInvalidFault            = errors.New("invalid fault settings")
 	ErrInvalidProxy            = errors.New("invalid proxy settings")
+	ErrContractInvalid         = errors.New("contract cannot be converted")
+	ErrInvalidExport           = errors.New("cannot export")
+	ErrInvalidImport           = errors.New("cannot import")
 )
 
 // StatusFromError maps a usecase-layer error to the HTTP status code that both
@@ -40,7 +43,7 @@ func StatusFromError(err error) int {
 	case errors.Is(err, ErrInvalidValidationMode), errors.Is(err, ErrInvalidStateMode),
 		errors.Is(err, ErrStateNotEnabled), errors.Is(err, ErrSeedNotArray), errors.Is(err, ErrSeedInvalid),
 		errors.Is(err, ErrInvalidMatch), errors.Is(err, ErrInvalidFault),
-		errors.Is(err, ErrInvalidProxy):
+		errors.Is(err, ErrInvalidProxy), errors.Is(err, ErrInvalidExport), errors.Is(err, ErrInvalidImport):
 		return StatusBadRequest
 	default:
 		return StatusInternalServerError
