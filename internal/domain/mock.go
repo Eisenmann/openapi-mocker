@@ -4,11 +4,14 @@ import "time"
 
 // MockRule is a response rule for a specific path+method(+scenario) of a project.
 type MockRule struct {
-	ID          string            `json:"id"`
-	ProjectID   string            `json:"projectId"`
-	Path        string            `json:"path"`   // e.g. /users/{id}.
-	Method      string            `json:"method"` // GET, POST...
-	Scenario    string            `json:"scenario"`
+	ID        string `json:"id"`
+	ProjectID string `json:"projectId"`
+	Path      string `json:"path"`   // e.g. /users/{id}.
+	Method    string `json:"method"` // GET, POST...
+	Scenario  string `json:"scenario"`
+	// Match lists conditions on the request; the rule is picked when all of
+	// them hold, so clients need no X-Mock-Scenario header.
+	Match       []MatchCondition  `json:"match,omitempty"`
 	StatusCode  int               `json:"statusCode"`
 	ContentType string            `json:"contentType"`
 	Headers     map[string]string `json:"headers"`

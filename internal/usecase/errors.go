@@ -20,6 +20,7 @@ var (
 	ErrStateNotEnabled         = errors.New("stateful mocks are not enabled for this project (set stateMode)")
 	ErrSeedNotArray            = errors.New("seed data must be a JSON array of objects")
 	ErrSeedInvalid             = errors.New("seed data is invalid")
+	ErrInvalidMatch            = errors.New("invalid match rule")
 )
 
 // StatusFromError maps a usecase-layer error to the HTTP status code that both
@@ -35,7 +36,8 @@ func StatusFromError(err error) int {
 	case errors.Is(err, ErrNotMCPContract):
 		return StatusBadRequest
 	case errors.Is(err, ErrInvalidValidationMode), errors.Is(err, ErrInvalidStateMode),
-		errors.Is(err, ErrStateNotEnabled), errors.Is(err, ErrSeedNotArray), errors.Is(err, ErrSeedInvalid):
+		errors.Is(err, ErrStateNotEnabled), errors.Is(err, ErrSeedNotArray), errors.Is(err, ErrSeedInvalid),
+		errors.Is(err, ErrInvalidMatch):
 		return StatusBadRequest
 	default:
 		return StatusInternalServerError

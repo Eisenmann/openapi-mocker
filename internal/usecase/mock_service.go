@@ -39,7 +39,7 @@ func (s *MockService) List(projectID string) []*domain.MockRule {
 }
 
 func (s *MockService) Create(m *domain.MockRule) (*domain.MockRule, error) {
-	err := validateJSONBody(m.Body)
+	err := validateRule(m)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +52,7 @@ func (s *MockService) Create(m *domain.MockRule) (*domain.MockRule, error) {
 }
 
 func (s *MockService) Update(m *domain.MockRule) error {
-	err := validateJSONBody(m.Body)
+	err := validateRule(m)
 	if err != nil {
 		return err
 	}
@@ -66,6 +66,16 @@ func (s *MockService) Update(m *domain.MockRule) error {
 
 func (s *MockService) Delete(id string) error {
 	return s.mocks.DeleteMock(id)
+}
+
+// validateRule checks a rule's body and match conditions.
+func validateRule(m *domain.MockRule) error {
+	err := validateJSONBody(m.Body)
+	if err != nil {
+		return err
+	}
+
+	return validateMatch(m.Match)
 }
 
 func validateJSONBody(body string) error {

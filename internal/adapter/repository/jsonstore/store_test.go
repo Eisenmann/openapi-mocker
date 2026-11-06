@@ -464,3 +464,29 @@ func TestStore_SetStateMode(t *testing.T) {
 		t.Errorf("mode must persist, got %+v, %v", got, err)
 	}
 }
+
+func TestStore_ListMocksKeepsCreationOrder(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	p := s.Create("P", "")
+
+	const n = 20
+
+	for i := range n {
+		s.CreateMock(&domain.MockRule{ProjectID: p.ID, Method: "GET", Path: "/x", Scenario: string(rune('a' + i))})
+	}
+
+	for range 10 {
+		got := s.ListMocks(p.ID)
+		if len(got) != n {
+			t.Fatalf("want %d rules, got %d", n, len(got))
+		}
+
+		for i, m := range got {
+			if m.Scenario != string(rune('a'+i)) {
+				t.Fatalf("rule %d is %q: rules of one path must be listed in creation order", i, m.Scenario)
+			}
+		}
+	}
+}

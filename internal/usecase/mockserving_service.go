@@ -154,8 +154,10 @@ func withWarnings(resp *MockResponse, violations []string) *MockResponse {
 func (s *MockServingService) respond(projectID, raw, pathTemplate string, req *MockRequest) *MockResponse {
 	method, path, scenario := req.Method, req.Path, req.Scenario
 
-	if rule := s.findRule(projectID, pathTemplate, method, scenario); rule != nil {
-		return s.fromRule(rule, s.templateContext(projectID, pathTemplate, req))
+	tc := s.templateContext(projectID, pathTemplate, req)
+
+	if rule := s.findRule(projectID, pathTemplate, method, scenario, tc); rule != nil {
+		return s.fromRule(rule, tc)
 	}
 
 	if s.cfg.state != nil {
@@ -184,21 +186,73 @@ func (s *MockServingService) respond(projectID, raw, pathTemplate string, req *M
 	}
 }
 
-func (s *MockServingService) findRule(projectID, pathTemplate, method, scenario string) *domain.MockRule {
-	method = strings.ToUpper(method)
-
-	var fallback *domain.MockRule
+// findRule picks the mock rule for the operation. An explicit scenario wins;
+// otherwise the rule with the most conditions that all match the request;
+// otherwise the unconditional default rule.
+func (s *MockServingService) findRule(
+	projectID, pathTemplate, method, scenario string, tc *TemplateContext,
+) *domain.MockRule {
+	var rules []*domain.MockRule
 
 	for _, m := range s.mocks.ListMocks(projectID) {
-		if !strings.EqualFold(m.Method, method) || m.Path != pathTemplate {
-			continue
+		if strings.EqualFold(m.Method, method) && m.Path == pathTemplate {
+			rules = append(rules, m)
 		}
+	}
 
-		if scenario != "" && m.Scenario == scenario {
+	if rule := explicitRule(rules, scenario); rule != nil {
+		return rule
+	}
+
+	if best := bestConditionalRule(rules, tc); best != nil {
+		return best
+	}
+
+	return defaultRule(rules)
+}
+
+// explicitRule returns the rule a client asked for with X-Mock-Scenario. The
+// scenario "default" is not a way to bypass conditions: it selects the
+// unconditional default rule, never a conditional rule that merely carries
+// the "default" scenario name (which is what the UI saves when the scenario
+// field is left empty).
+func explicitRule(rules []*domain.MockRule, scenario string) *domain.MockRule {
+	switch scenario {
+	case "":
+		return nil
+	case ScenarioDefault:
+		return defaultRule(rules)
+	}
+
+	for _, m := range rules {
+		if m.Scenario == scenario {
 			return m
 		}
+	}
 
-		if m.Scenario == "" || m.Scenario == "default" {
+	return nil
+}
+
+// bestConditionalRule returns the rule whose conditions all match and that has
+// the most of them (the first one on a tie).
+func bestConditionalRule(rules []*domain.MockRule, tc *TemplateContext) *domain.MockRule {
+	var best *domain.MockRule
+
+	for _, m := range rules {
+		if len(m.Match) > 0 && (best == nil || len(m.Match) > len(best.Match)) && tc.matchesAll(m.Match) {
+			best = m
+		}
+	}
+
+	return best
+}
+
+// defaultRule returns the last unconditional rule without a named scenario.
+func defaultRule(rules []*domain.MockRule) *domain.MockRule {
+	var fallback *domain.MockRule
+
+	for _, m := range rules {
+		if len(m.Match) == 0 && (m.Scenario == "" || m.Scenario == ScenarioDefault) {
 			fallback = m
 		}
 	}
