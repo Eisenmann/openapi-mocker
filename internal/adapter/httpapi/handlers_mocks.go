@@ -46,7 +46,7 @@ func (a *api) updateMock(w http.ResponseWriter, r *http.Request) {
 	err = a.s.Mocks.Update(&m)
 	if err != nil {
 		status := http.StatusNotFound
-		if errors.Is(err, usecase.ErrInvalidMatch) {
+		if errors.Is(err, usecase.ErrInvalidMatch) || errors.Is(err, usecase.ErrInvalidFault) {
 			status = http.StatusBadRequest
 		}
 

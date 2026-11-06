@@ -45,6 +45,19 @@ type MCPExecOptions struct {
 	// Render transforms a tool's decoded mock result (e.g. fills in
 	// placeholders), given the tool call's raw arguments.
 	Render func(result any, arguments []byte) any
+	// Fault, when set, is called for every tools/call whose tool declares
+	// fault injection, and returns the fault to inject into that call (""
+	// for none). The engine answers a FaultError call with a JSON-RPC
+	// error itself; the other faults are applied by the caller.
+	Fault func(f *MCPFault) string
+}
+
+// MCPFault is the fault injection a tool declares in its manifest: the same
+// settings as a REST mock rule (delay and error rate plus the rest of Fault).
+type MCPFault struct {
+	DelayMs      int
+	ErrorRatePct int
+	Settings     *domain.Fault
 }
 
 type MCPEngine interface {
@@ -101,6 +114,18 @@ type MCPResponse struct {
 	// Rejected is set when enforce mode answered with an invalid-params error
 	// instead of the mock; otherwise the violations were only warnings.
 	Rejected bool
+	// Status is the HTTP status to answer with (200 unless a fault changed it).
+	Status int
+	// Fault names the injected fault, if any (see the Fault* constants).
+	// FaultDrop, FaultTimeout and FaultTruncated need the HTTP adapter to act
+	// on the connection. For a batch, the first faulted call decides.
+	Fault string
+	// DelayMs is the latency to add before answering (the largest of a
+	// batch's calls).
+	DelayMs int
+	// HoldMs is how long a FaultTimeout request is held before the
+	// connection is dropped.
+	HoldMs int
 }
 
 // Serve handles one JSON-RPC 2.0 request and returns the mock JSON response.
@@ -128,7 +153,9 @@ func (s *MCPServingService) Handle(projectID string, body []byte, scenario strin
 
 	mode := s.cfg.validationMode(projectID)
 
-	resp, violations, err := s.execute(projectID, mode, raw, body, scenario)
+	var faults mcpFaultRun
+
+	resp, violations, err := s.execute(projectID, mode, raw, body, scenario, faults.roll)
 	if err != nil {
 		// Only manifest-level failures reach this point; request-level
 		// problems are JSON-RPC error responses produced by the engine.
@@ -144,15 +171,23 @@ func (s *MCPServingService) Handle(projectID string, body []byte, scenario strin
 		status = StatusAccepted
 	}
 
-	s.logResult(projectID, &mcpOutcome{
-		status: status, rule: rule, matched: !hasJSONRPCError(resp), violations: violations,
-	}, start)
-
-	return MCPResponse{
+	out := MCPResponse{
 		Body:       resp,
 		Violations: violations,
 		Rejected:   mode == domain.ValidationEnforce && len(violations) > 0,
-	}, nil
+		Status:     status,
+		Fault:      "",
+		DelayMs:    faults.delayMs,
+		HoldMs:     0,
+	}
+
+	faults.apply(&out)
+
+	s.logResult(projectID, &mcpOutcome{
+		status: out.Status, rule: rule, matched: !hasJSONRPCError(out.Body), violations: violations, fault: out.Fault,
+	}, start)
+
+	return out, nil
 }
 
 // execute runs the request through the engine, validating it when the
@@ -160,9 +195,11 @@ func (s *MCPServingService) Handle(projectID string, body []byte, scenario strin
 // {{placeholders}}.
 func (s *MCPServingService) execute(
 	projectID string, mode domain.ValidationMode, raw string, body []byte, scenario string,
+	fault func(f *MCPFault) string,
 ) (resp []byte, violations []string, err error) {
 	return s.engine.ExecuteWith([]byte(raw), body, &MCPExecOptions{
 		Scenario: scenario,
+		Fault:    fault,
 		Validate: mode != domain.ValidationOff,
 		Enforce:  mode == domain.ValidationEnforce,
 		Render: func(result any, arguments []byte) any {
@@ -203,6 +240,7 @@ type mcpOutcome struct {
 	rule       string
 	matched    bool
 	violations []string
+	fault      string
 }
 
 // logResult records a request log entry (mirrors GraphQLServingService).
@@ -218,6 +256,7 @@ func (s *MCPServingService) logResult(projectID string, o *mcpOutcome, start tim
 		Timestamp:   time.Now().UTC(),
 		DurationMs:  time.Since(start).Milliseconds(),
 		Violations:  o.violations,
+		Fault:       o.fault,
 	})
 }
 

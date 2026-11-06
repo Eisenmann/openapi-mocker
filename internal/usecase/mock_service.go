@@ -75,7 +75,17 @@ func validateRule(m *domain.MockRule) error {
 		return err
 	}
 
-	return validateMatch(m.Match)
+	err = validateMatch(m.Match)
+	if err != nil {
+		return err
+	}
+
+	err = m.ValidateFault()
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidFault, err)
+	}
+
+	return nil
 }
 
 func validateJSONBody(body string) error {

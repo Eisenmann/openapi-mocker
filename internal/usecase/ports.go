@@ -98,7 +98,16 @@ type MockResponse struct {
 	Headers     map[string]string
 	Body        []byte
 	DelayMs     int
-	Source      string // "rule" | "schema-example" | "chaos-injection" | "request-validation".
+	// Fault names the injected fault, if any: FaultDrop, FaultTimeout and
+	// FaultTruncate need the HTTP adapter to act on the connection; the
+	// others (error, garbage, empty) are ordinary responses.
+	Fault string
+	// HoldMs is how long a FaultTimeout request is held before the
+	// connection is dropped.
+	HoldMs int
+	// Source is "rule", "schema-example", "request-validation" or, for injected
+	// faults, "chaos-injection", "chaos-drop", "chaos-timeout" or "chaos-malformed".
+	Source      string
 	MatchedRule string
 	Matched     bool
 	// Violations holds the request-validation problems found (warn/enforce).

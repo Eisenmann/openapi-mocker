@@ -1,8 +1,11 @@
 package httpapi
 
 import (
+	"context"
 	"io"
+	"net"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/Eisenmann/openapi-mocker/internal/usecase"
@@ -46,8 +49,8 @@ func (a *api) handleMock(w http.ResponseWriter, r *http.Request, path string) {
 		SkipValidation: false,
 	})
 
-	if resp.DelayMs > 0 {
-		time.Sleep(time.Duration(resp.DelayMs) * time.Millisecond)
+	if injectConnectionFault(w, r, resp.DelayMs, resp.Fault, resp.HoldMs) {
+		return
 	}
 
 	for k, v := range resp.Headers {
@@ -62,6 +65,16 @@ func (a *api) handleMock(w http.ResponseWriter, r *http.Request, path string) {
 		w.Header().Set("X-Mock-Source", resp.Source)
 	}
 
+	if resp.Fault != "" {
+		w.Header().Set("X-Mock-Fault", resp.Fault)
+	}
+
+	if resp.Fault == usecase.FaultTruncated {
+		writeTruncated(w, resp.StatusCode, resp.Body)
+
+		return
+	}
+
 	w.WriteHeader(resp.StatusCode)
 
 	_, err = w.Write(resp.Body)
@@ -70,4 +83,74 @@ func (a *api) handleMock(w http.ResponseWriter, r *http.Request, path string) {
 
 		return
 	}
+}
+
+// injectConnectionFault waits out the injected latency and then acts on the
+// faults that need the connection: it drops it (FaultDrop), or holds the
+// request and then drops it (FaultTimeout). It reports whether the request
+// is over, so the caller must not write a response.
+func injectConnectionFault(w http.ResponseWriter, r *http.Request, delayMs int, fault string, holdMs int) bool {
+	if !sleepContext(r.Context(), delayMs) {
+		return true // the client gave up while the mock was "slow".
+	}
+
+	switch fault {
+	case usecase.FaultDrop:
+		dropConnection(w)
+
+		return true
+	case usecase.FaultTimeout:
+		sleepContext(r.Context(), holdMs)
+		dropConnection(w)
+
+		return true
+	default:
+		return false
+	}
+}
+
+// sleepContext waits for ms milliseconds and reports false if the request was
+// cancelled first.
+func sleepContext(ctx context.Context, ms int) bool {
+	if ms <= 0 {
+		return true
+	}
+
+	t := time.NewTimer(time.Duration(ms) * time.Millisecond)
+	defer t.Stop()
+
+	select {
+	case <-t.C:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
+// writeTruncated promises the whole body but sends only half of it and then
+// drops the connection, so the client sees an unexpected EOF.
+func writeTruncated(w http.ResponseWriter, status int, body []byte) {
+	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+	w.WriteHeader(status)
+
+	_, _ = w.Write(body[:len(body)/2])
+
+	dropConnection(w)
+}
+
+// dropConnection closes the client's TCP connection without finishing the
+// response; with SO_LINGER 0 the client sees a connection reset. When the
+// connection cannot be hijacked the handler is aborted instead, which makes
+// the server close it.
+func dropConnection(w http.ResponseWriter) {
+	conn, _, err := http.NewResponseController(w).Hijack()
+	if err != nil {
+		panic(http.ErrAbortHandler)
+	}
+
+	if tcp, ok := conn.(*net.TCPConn); ok {
+		_ = tcp.SetLinger(0)
+	}
+
+	_ = conn.Close()
 }

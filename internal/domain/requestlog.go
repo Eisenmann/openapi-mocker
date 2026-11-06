@@ -16,4 +16,7 @@ type RequestLog struct {
 	// Violations lists request-validation problems found for this request
 	// (set when the project's validation mode is warn or enforce).
 	Violations []string `json:"violations,omitempty"`
+	// Fault names the fault injected into this request (drop, timeout,
+	// error, garbage, truncated or empty); empty for a normal response.
+	Fault string `json:"fault,omitempty"`
 }

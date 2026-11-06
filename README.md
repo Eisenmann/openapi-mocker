@@ -55,8 +55,33 @@ desktop, in Docker, and in Kubernetes.
 11. Additional features:
    - **Response scenarios** (`X-Mock-Scenario`) — multiple response variants
      for one endpoint (happy path, empty, error…), selected by a header.
-   - **Delay simulation and chaos error injection** (`delayMs`,
-     `failRatePct`) — for testing client resilience.
+   - **Fault injection** — per mock rule (REST), also in the mock editor, for
+     testing client resilience: latency (`delayMs` plus a random
+     `fault.jitterMs`), injected errors (`failRatePct`, with `fault.errorStatuses`
+     such as `[429, 503]`, default a random 500-503), timeouts
+     (`fault.timeoutRatePct`: the request is held for `fault.timeoutMs`,
+     default 30 s, and then the connection is dropped), dropped connections
+     (`fault.dropRatePct`: reset without any response) and malformed bodies
+     (`fault.malformedRatePct` with `fault.malformedMode`: `garbage` = invalid
+     JSON, `truncated` = half the body then the connection is dropped,
+     `empty` = no body). Each request rolls once: the rates are exclusive
+     outcomes (drop, timeout, error, malformed) and must add up to at most
+     100; whatever is left is a normal response. Latency applies to every
+     outcome. Limits: delay and jitter up to 120 s, timeout hold up to 150 s;
+     invalid settings give `400`. Injected faults are marked in the request log
+     (`fault`), by `X-Mock-Fault` and by `X-Mock-Source` (`chaos-injection`,
+     `chaos-malformed`). For **MCP**, put a `"fault"` object on a tool (all its
+     calls) or inside one of its `mockResponses` entries (that entry only, it
+     replaces the tool's; like `match` the key is removed from the result):
+     `{"delayMs": 200, "jitterMs": 50, "errorRatePct": 10, "errorStatuses": [503],
+     "timeoutRatePct": 5, "timeoutMs": 5000, "dropRatePct": 5,
+     "malformedRatePct": 5, "malformedMode": "truncated"}` (`failRatePct` is
+     accepted for `errorRatePct`). It has the same fields, rules and limits as
+     above; an injected error answers with the chosen HTTP status (default
+     500-503) and a JSON-RPC `-32603` error, and unknown fields or invalid
+     settings fail contract validation. Only `tools/call` is affected; for a
+     batch the largest delay is applied and the first faulted call decides the
+     fault. Not available for GraphQL yet.
    - **Schema-example fallback**, used when a mock is not configured manually
      or via LLM — the endpoint always responds with something valid.
    - **Request validation** — check incoming requests against the contract.

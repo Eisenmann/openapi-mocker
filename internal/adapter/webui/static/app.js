@@ -503,11 +503,12 @@ async function renderMocksTab(panel, project) {
 
     if (epMocks.length) {
       card.appendChild(el('table', {}, [
-        el('tr', {}, [el('th', {}, 'Scenario'), el('th', {}, 'Match'), el('th', {}, 'Status'), el('th', {}, 'Source'), el('th', {}, '')]),
+        el('tr', {}, [el('th', {}, 'Scenario'), el('th', {}, 'Match'), el('th', {}, 'Status'), el('th', {}, 'Faults'), el('th', {}, 'Source'), el('th', {}, '')]),
         ...epMocks.map(m => el('tr', {}, [
           el('td', {}, m.scenario || 'default'),
           el('td', {}, (m.match && m.match.length) ? `${m.match.length} condition(s)` : '-'),
           el('td', {}, String(m.statusCode)),
+          el('td', {}, faultSummary(m)),
           el('td', {}, m.isLlmGenerated ? '🤖 LLM' : '✍️ manually'),
           el('td', {}, [
             el('button', { class: 'btn btn-secondary btn-sm', onclick: () => openMockEditor(project.id, ep, m) }, 'Edit'),
@@ -523,6 +524,18 @@ async function renderMocksTab(panel, project) {
   }
 }
 
+// faultSummary describes a rule's fault injection in a few words for the mock table.
+function faultSummary(m) {
+  const f = m.fault || {};
+  const parts = [];
+  if (m.delayMs || f.jitterMs) parts.push(f.jitterMs ? `${m.delayMs || 0}-${(m.delayMs || 0) + f.jitterMs} ms` : `${m.delayMs} ms`);
+  if (m.failRatePct) parts.push(`${m.failRatePct}% err`);
+  if (f.timeoutRatePct) parts.push(`${f.timeoutRatePct}% timeout`);
+  if (f.dropRatePct) parts.push(`${f.dropRatePct}% drop`);
+  if (f.malformedRatePct) parts.push(`${f.malformedRatePct}% ${f.malformedMode || 'garbage'}`);
+  return parts.length ? parts.join(', ') : '-';
+}
+
 async function openMockEditor(projectId, endpoint, mock) {
   const providers = await providerOptions(projectId);
   const isEdit = !!mock;
@@ -532,6 +545,19 @@ async function openMockEditor(projectId, endpoint, mock) {
   const status = el('input', { type: 'number', value: mock ? mock.statusCode : 200 });
   const delay = el('input', { type: 'number', value: mock ? mock.delayMs : 0 });
   const failRate = el('input', { type: 'number', value: mock ? mock.failRatePct : 0 });
+  const fault = (mock && mock.fault) || {};
+  const jitter = el('input', { type: 'number', min: 0, value: fault.jitterMs || 0 });
+  const errorStatuses = el('input', { placeholder: 'default 500-503, e.g. 429, 503', value: (fault.errorStatuses || []).join(', ') });
+  const timeoutRate = el('input', { type: 'number', min: 0, max: 100, value: fault.timeoutRatePct || 0 });
+  const timeoutMs = el('input', { type: 'number', min: 0, placeholder: '30000', value: fault.timeoutMs || '' });
+  const dropRate = el('input', { type: 'number', min: 0, max: 100, value: fault.dropRatePct || 0 });
+  const malformedRate = el('input', { type: 'number', min: 0, max: 100, value: fault.malformedRatePct || 0 });
+  const malformedMode = el('select', {}, [
+    el('option', { value: 'garbage' }, 'garbage (invalid JSON)'),
+    el('option', { value: 'truncated' }, 'truncated (cut, then connection dropped)'),
+    el('option', { value: 'empty' }, 'empty body'),
+  ]);
+  malformedMode.value = fault.malformedMode || 'garbage';
   const body = el('textarea', { rows: 10 }, bodyText);
   const match = el('textarea', {
     rows: 3,
@@ -550,7 +576,23 @@ async function openMockEditor(projectId, endpoint, mock) {
   modal.appendChild(el('div', { class: 'row' }, [
     el('div', {}, [el('label', {}, 'HTTP Status'), status]),
     el('div', {}, [el('label', {}, 'Delay, ms'), delay]),
-    el('div', {}, [el('label', {}, '% Random Errors'), failRate]),
+    el('div', {}, [el('label', {}, 'Jitter, ms (+random)'), jitter]),
+  ]));
+  modal.appendChild(el('label', {}, 'Fault injection'));
+  modal.appendChild(el('p', { class: 'muted', style: 'font-size:12px; margin:4px 0 8px;' },
+    'Each request rolls once; the percentages are exclusive outcomes and must add up to at most 100 (the rest is a normal response). Delay and jitter apply to every outcome.'));
+  modal.appendChild(el('div', { class: 'row' }, [
+    el('div', {}, [el('label', {}, '% Errors'), failRate]),
+    el('div', {}, [el('label', {}, 'Error statuses'), errorStatuses]),
+  ]));
+  modal.appendChild(el('div', { class: 'row' }, [
+    el('div', {}, [el('label', {}, '% Timeouts (no answer)'), timeoutRate]),
+    el('div', {}, [el('label', {}, 'Timeout hold, ms'), timeoutMs]),
+    el('div', {}, [el('label', {}, '% Dropped connections'), dropRate]),
+  ]));
+  modal.appendChild(el('div', { class: 'row' }, [
+    el('div', {}, [el('label', {}, '% Malformed bodies'), malformedRate]),
+    el('div', {}, [el('label', {}, 'Malformed as'), malformedMode]),
   ]));
   modal.appendChild(el('label', {}, 'Response Body (JSON)'));
   modal.appendChild(body);
@@ -579,8 +621,25 @@ async function openMockEditor(projectId, endpoint, mock) {
           try { conditions = JSON.parse(match.value); } catch (_) { toast('Match conditions must be a JSON array', 'error'); return; }
           if (!Array.isArray(conditions)) { toast('Match conditions must be a JSON array', 'error'); return; }
         }
+        const statuses = errorStatuses.value.split(/[\s,]+/).filter(Boolean).map(Number);
+        if (statuses.some(n => !Number.isInteger(n) || n < 400 || n > 599)) {
+          toast('Error statuses must be HTTP codes between 400 and 599, e.g. 429, 503', 'error');
+          return;
+        }
+        const faultPayload = {
+          jitterMs: Number(jitter.value) || 0,
+          errorStatuses: statuses,
+          timeoutRatePct: Number(timeoutRate.value) || 0,
+          timeoutMs: Number(timeoutMs.value) || 0,
+          dropRatePct: Number(dropRate.value) || 0,
+          malformedRatePct: Number(malformedRate.value) || 0,
+          malformedMode: Number(malformedRate.value) ? malformedMode.value : '',
+        };
+        const hasFault = faultPayload.jitterMs || statuses.length || faultPayload.timeoutRatePct ||
+          faultPayload.timeoutMs || faultPayload.dropRatePct || faultPayload.malformedRatePct;
         const payload = {
           projectId, path: endpoint.path, method: endpoint.method, match: conditions,
+          fault: hasFault ? faultPayload : null,
           scenario: scenario.value || 'default',
           statusCode: Number(status.value) || 200,
           contentType: 'application/json',

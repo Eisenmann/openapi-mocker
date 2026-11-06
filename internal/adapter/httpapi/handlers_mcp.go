@@ -35,6 +35,10 @@ func (a *api) serveMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if injectConnectionFault(w, r, result.DelayMs, result.Fault, result.HoldMs) {
+		return
+	}
+
 	// Request validation outcome, visible to HTTP-level tooling (the same
 	// header the REST mock uses). Warnings are also in the result's _meta.
 	if len(result.Violations) > 0 {
@@ -54,7 +58,18 @@ func (a *api) serveMCP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
+
+	if result.Fault != "" {
+		w.Header().Set("X-Mock-Fault", result.Fault)
+	}
+
+	if result.Fault == usecase.FaultTruncated {
+		writeTruncated(w, result.Status, result.Body)
+
+		return
+	}
+
+	w.WriteHeader(result.Status)
 	_, _ = w.Write(result.Body)
 }
 

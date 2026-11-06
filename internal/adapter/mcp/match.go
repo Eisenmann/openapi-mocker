@@ -28,8 +28,8 @@ type matchSpec struct {
 }
 
 // splitMatch separates a mockResponses entry into its conditions and the
-// response itself (the entry without its "match" key). Entries without
-// "match" are returned unchanged with no conditions.
+// response itself (the entry without its "match" and "fault" keys). Entries
+// with neither are returned unchanged with no conditions.
 //
 // "match" is either {"city": "Oslo", "units.temp": "c"} (all equal) or an
 // array of {"name": "city", "op": "regex", "value": "^O"} conditions.
@@ -40,16 +40,23 @@ func splitMatch(raw json.RawMessage) (conds []domain.MatchCondition, body json.R
 		return nil, raw, nil //nolint:nilerr // not an object: it has no conditions.
 	}
 
-	m, ok := obj[matchKey]
-	if !ok {
+	m, hasMatch := obj[matchKey]
+	_, hasFault := obj[faultKey]
+
+	if !hasMatch && !hasFault {
 		return nil, raw, nil
 	}
 
 	delete(obj, matchKey)
+	delete(obj, faultKey)
 
 	body, err = json.Marshal(obj)
 	if err != nil {
 		return nil, nil, fmt.Errorf("re-encode response: %w", err)
+	}
+
+	if !hasMatch {
+		return nil, body, nil
 	}
 
 	conds, err = parseConditions(m)

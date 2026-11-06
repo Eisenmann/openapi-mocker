@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
+
+	"github.com/Eisenmann/openapi-mocker/internal/usecase"
 )
 
 // callState carries per-request options and validation results through the
@@ -19,6 +21,8 @@ type callState struct {
 	violations []string
 	// render fills {{placeholders}} in a tool's mock result (nil: leave as is).
 	render func(v any, arguments []byte) any
+	// fault rolls the fault injection of a tool call (nil: no fault injection).
+	fault func(f *usecase.MCPFault) string
 }
 
 // check validates the arguments of a tools/call against the tool's
