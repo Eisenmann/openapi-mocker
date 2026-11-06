@@ -84,6 +84,20 @@ func (m *mockProjectRepo) SetStateMode(id string, mode domain.StateMode) (*domai
 	return p, nil
 }
 
+func (m *mockProjectRepo) SetProxy(id string, cfg domain.ProxyConfig) (*domain.Project, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	p, ok := m.projects[id]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+
+	p.UpstreamURL, p.ProxyMode, p.DriftCheck = cfg.UpstreamURL, cfg.Mode, cfg.DriftCheck
+
+	return p, nil
+}
+
 func (m *mockProjectRepo) Delete(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

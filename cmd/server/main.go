@@ -30,6 +30,7 @@ import (
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/repository/jsonstore"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/repository/statestore"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/router"
+	"github.com/Eisenmann/openapi-mocker/internal/adapter/upstream"
 	"github.com/Eisenmann/openapi-mocker/internal/agents"
 	"github.com/Eisenmann/openapi-mocker/internal/domain/ports"
 	"github.com/Eisenmann/openapi-mocker/internal/usecase"
@@ -72,12 +73,14 @@ func main() {
 		Providers: usecase.NewProviderService(store, llmGateway),
 		MockServing: usecase.NewMockServingService(
 			store, store, store, contractEngine, usecase.WithProjects(store), usecase.WithState(stateService),
+			usecase.WithUpstream(upstream.New(0), store),
 		),
 		GraphQLServing: usecase.NewGraphQLServingService(store, store, graphQLEngine),
 		MCPServing:     usecase.NewMCPServingService(store, store, mcpEngine, usecase.WithProjects(store)),
 		State:          stateService,
 		Codegen:        usecase.NewCodegenService(store, codeGenerator),
 		Logs:           usecase.NewLogService(store),
+		Drift:          usecase.NewDriftService(store),
 		CodeGenAgent:   codeGenAgent,
 	}
 

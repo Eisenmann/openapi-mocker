@@ -67,6 +67,11 @@ type Project struct {
 	Description    string         `json:"description"`
 	ValidationMode ValidationMode `json:"validationMode"`
 	StateMode      StateMode      `json:"stateMode"`
-	CreatedAt      time.Time      `json:"createdAt"`
-	UpdatedAt      time.Time      `json:"updatedAt"`
+	// UpstreamURL, ProxyMode and DriftCheck configure record/replay and
+	// contract drift detection (see ProxyConfig).
+	UpstreamURL string    `json:"upstreamUrl"`
+	ProxyMode   ProxyMode `json:"proxyMode"`
+	DriftCheck  bool      `json:"driftCheck"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
 }

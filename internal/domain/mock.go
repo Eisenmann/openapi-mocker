@@ -20,8 +20,14 @@ type MockRule struct {
 	FailRatePct int               `json:"failRatePct"` // % of injected error responses.
 	// Fault holds the rest of the fault injection: latency jitter, timeouts,
 	// dropped connections and malformed bodies. Nil means none.
-	Fault     *Fault    `json:"fault,omitempty"`
-	IsLLMGen  bool      `json:"isLlmGenerated"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	Fault *Fault `json:"fault,omitempty"`
+	// Raw serves the body and header values verbatim, without filling in
+	// {{placeholders}}. Recorded rules are raw, since the upstream's data may
+	// contain "{{".
+	Raw bool `json:"raw,omitempty"`
+	// Recording is set when the rule was saved from an upstream response.
+	Recording *Recording `json:"recording,omitempty"`
+	IsLLMGen  bool       `json:"isLlmGenerated"`
+	CreatedAt time.Time  `json:"createdAt"`
+	UpdatedAt time.Time  `json:"updatedAt"`
 }

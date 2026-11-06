@@ -70,7 +70,7 @@ func (s *MockService) Delete(id string) error {
 
 // validateRule checks a rule's body and match conditions.
 func validateRule(m *domain.MockRule) error {
-	err := validateJSONBody(m.Body)
+	err := validateRuleBody(m)
 	if err != nil {
 		return err
 	}
@@ -83,6 +83,28 @@ func validateRule(m *domain.MockRule) error {
 	err = m.ValidateFault()
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalidFault, err)
+	}
+
+	return nil
+}
+
+// validateRuleBody checks that a rule's body is valid JSON. A raw rule (a
+// recording) is served verbatim, so it is checked as it is and only when its
+// content type says JSON: recorded XML or text bodies are fine.
+func validateRuleBody(m *domain.MockRule) error {
+	if !m.Raw {
+		return validateJSONBody(m.Body)
+	}
+
+	if !isJSONType(m.ContentType) || strings.TrimSpace(m.Body) == "" {
+		return nil
+	}
+
+	var v any
+
+	err := json.Unmarshal([]byte(m.Body), &v)
+	if err != nil {
+		return fmt.Errorf("mock body must be valid JSON: %w", err)
 	}
 
 	return nil

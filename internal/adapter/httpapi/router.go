@@ -68,8 +68,8 @@ func NewRouter(s *Services) http.Handler {
 	mux.HandleFunc("GET /api/projects/{id}/codegen/client", a.codegenClient)
 	mux.HandleFunc("POST /api/projects/{id}/codegen/agent", a.codegenAgent)
 
-	// --- logs ---.
-	mux.HandleFunc("GET /api/projects/{id}/logs", a.listLogs)
+	// --- request logs and contract drift ---.
+	a.registerDiagnosticsRoutes(mux)
 
 	// --- dynamic mock server ---.
 	a.registerMockServerRoutes(mux)
