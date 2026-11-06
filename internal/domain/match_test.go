@@ -60,6 +60,9 @@ func TestMatchCondition_Validate(t *testing.T) {
 		{"query needs name", domain.MatchCondition{Source: domain.MatchQuery, Value: "x"}, domain.ErrMatchName},
 		{"bad op", domain.MatchCondition{Source: domain.MatchBody, Op: "like"}, domain.ErrMatchOp},
 		{"bad regex", domain.MatchCondition{Source: domain.MatchBody, Op: domain.OpRegex, Value: "("}, domain.ErrMatchRegex},
+		{"empty regex", domain.MatchCondition{Source: domain.MatchBody, Op: domain.OpRegex}, domain.ErrMatchValue},
+		{"empty contains", domain.MatchCondition{Source: domain.MatchQuery, Name: "a", Op: domain.OpContains}, domain.ErrMatchValue},
+		{"empty equals is allowed", domain.MatchCondition{Source: domain.MatchQuery, Name: "a"}, nil},
 	}
 
 	for _, tc := range cases {
@@ -92,5 +95,32 @@ func TestLookupJSONPath(t *testing.T) {
 
 	if _, ok := domain.LookupJSONPath(doc, ""); !ok {
 		t.Error("empty path is the document")
+	}
+}
+
+func TestLookupJSONPath_EscapedKeys(t *testing.T) {
+	t.Parallel()
+
+	doc := map[string]any{
+		"units.temp": "c",
+		"a":          map[string]any{"b[0]": "x", "list": []any{"y"}},
+	}
+
+	cases := []struct {
+		path string
+		want any
+		ok   bool
+	}{
+		{`units\.temp`, "c", true},
+		{"units.temp", nil, false},
+		{`a.b\[0\]`, "x", true},
+		{"a.list[0]", "y", true},
+	}
+
+	for _, tc := range cases {
+		got, ok := domain.LookupJSONPath(doc, tc.path)
+		if ok != tc.ok || got != tc.want {
+			t.Errorf("%q: got %v, %v; want %v, %v", tc.path, got, ok, tc.want, tc.ok)
+		}
 	}
 }

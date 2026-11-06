@@ -48,3 +48,33 @@ func TestRouter_RequestMatchingEndToEnd(t *testing.T) {
 		t.Errorf("missing header: default rule expected, got %d %s", rec.Code, rec.Body.String())
 	}
 }
+
+const matchingMCP = `{"mcpServer":{"name":"demo","tools":[{"name":"weather",
+ "mockResponses":{
+  "default":{"content":[{"type":"text","text":"default"}]},
+  "oslo":{"match":{"city":"Oslo"},"content":[{"type":"text","text":"oslo"}]}}}]}}`
+
+func TestRouter_MCPRequestMatchingEndToEnd(t *testing.T) {
+	t.Parallel()
+
+	h, id := newTemplatingRouter(t, "mcp", matchingMCP)
+
+	call := func(args string) string {
+		body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"weather","arguments":` + args + `}}`
+
+		rec := doRequest(t, h, http.MethodPost, "/mock/"+id+"/mcp", strings.NewReader(body), nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+		}
+
+		return rec.Body.String()
+	}
+
+	if got := call(`{"city":"Oslo"}`); !strings.Contains(got, "oslo") || strings.Contains(got, `"match"`) {
+		t.Errorf("matching arguments, no scenario header: %s", got)
+	}
+
+	if got := call(`{"city":"Rome"}`); !strings.Contains(got, "default") {
+		t.Errorf("non-matching arguments: %s", got)
+	}
+}

@@ -14,6 +14,8 @@ import (
 // conditional on the tool call's arguments.
 const matchKey = "match"
 
+var errMatchValueMissing = errors.New(`a condition needs a "value" unless its op is exists or not_exists`)
+
 var errMatchShape = errors.New(`"match" must be an object of argument: value pairs or an array of conditions`)
 
 // matchSpec is one condition as written in a manifest: Name is a JSON path
@@ -123,7 +125,11 @@ func parseMatchArray(raw []byte) ([]domain.MatchCondition, error) {
 	}
 
 	conds := make([]domain.MatchCondition, 0, len(specs))
-	for _, sp := range specs {
+	for i, sp := range specs {
+		if len(sp.Value) == 0 && sp.Op != domain.OpExists && sp.Op != domain.OpNotExists {
+			return nil, fmt.Errorf("match condition %d: %w", i+1, errMatchValueMissing)
+		}
+
 		conds = append(conds, newCondition(orDefault(sp.Name, sp.Path), sp.Op, sp.Value))
 	}
 

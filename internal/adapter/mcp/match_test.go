@@ -85,12 +85,44 @@ func TestMatchArguments_ConditionalOnlyToolDoesNotServeLoneResponse(t *testing.T
 func TestValidate_RejectsMalformedMatch(t *testing.T) {
 	t.Parallel()
 
-	for _, match := range []string{`"x"`, `[{"name":"a","op":"like"}]`, `[{"name":"a","op":"regex","value":"("}]`} {
+	for _, match := range []string{
+		`"x"`, `[{"name":"a","op":"like"}]`, `[{"name":"a","op":"regex","value":"("}]`,
+		`[{"name":"a"}]`, `[{"name":"a","op":"contains"}]`,
+	} {
 		manifest := `{"mcpServer":{"name":"m","tools":[{"name":"t","mockResponses":{
 			"r":{"match":` + match + `,"content":[]}}}]}}`
 
 		if res := NewEngine().Validate([]byte(manifest)); res.Valid {
 			t.Errorf("match %s must be rejected", match)
 		}
+	}
+}
+
+func TestValidate_ExistsNeedsNoValue(t *testing.T) {
+	t.Parallel()
+
+	manifest := `{"mcpServer":{"name":"m","tools":[{"name":"t","mockResponses":{
+		"r":{"match":[{"name":"a","op":"exists"}],"content":[]}}}]}}`
+
+	if res := NewEngine().Validate([]byte(manifest)); !res.Valid {
+		t.Errorf("exists without value must be valid: %+v", res)
+	}
+}
+
+func TestMatchArguments_EscapedDotInArgumentName(t *testing.T) {
+	t.Parallel()
+
+	manifest := `{"mcpServer":{"name":"m","tools":[{"name":"t","mockResponses":{
+		"default":{"content":[{"type":"text","text":"default"}]},
+		"dotted":{"match":{"a\\.b":"1"},"content":[{"type":"text","text":"dotted"}]}}}]}}`
+
+	out, err := NewEngine().Execute([]byte(manifest), callReq("t", `{"a.b":"1"}`), "")
+	if err != nil || !strings.Contains(string(out), "dotted") {
+		t.Errorf("escaped dot must address the literal key: %s (%v)", out, err)
+	}
+
+	out, _ = NewEngine().Execute([]byte(manifest), callReq("t", `{"a":{"b":"1"}}`), "")
+	if !strings.Contains(string(out), "default") {
+		t.Errorf("nested value must not match the escaped key: %s", out)
 	}
 }

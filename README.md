@@ -80,13 +80,19 @@ desktop, in Docker, and in Kubernetes.
      the most conditions (the first created on a tie), then the unconditional
      default rule, then the schema example. A rule with conditions never acts as
      the default. Conditions are validated when the rule is saved (invalid ones
-     give `400`) and can be edited in the mock editor. For MCP, a tool's
+     give `400`; `contains` and `regex` need a non-empty value) and can be edited
+     in the mock editor. `X-Mock-Scenario: default` selects the unconditional
+     default rule, never a conditional one. Only the first value of a repeated
+     query parameter or header is compared. For MCP, a tool's
      `mockResponses` entry may have a `"match"` key, either
      `{"city": "Oslo"}` (all equal) or the condition array
      `[{"name": "days", "op": "regex", "value": "^[1-9]"}]` over the tool
-     arguments (`name` is a JSON path); the key is removed from the result, an
-     explicit scenario still wins, then the best matching entry, then
-     `default`. Malformed `match` fails contract validation.
+     arguments (`name` is a JSON path, and a backslash makes a character
+     literal: `units\.temp` is the key `units.temp`); array
+     conditions need a `value` unless the op is `exists`/`not_exists`. The key is
+     removed from the result, an explicit scenario still wins, then the best
+     matching entry (the most conditions; on a tie the lexically first key),
+     then `default`. Malformed `match` fails contract validation.
    - **Response templating** — put `{{placeholders}}` in mock rule bodies and
      header values (REST) and in MCP tool `mockResponses`, so one mock reacts
      to the request instead of needing a rule per case. Available:

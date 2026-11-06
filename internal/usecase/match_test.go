@@ -133,3 +133,56 @@ func TestMockService_ValidatesMatchConditions(t *testing.T) {
 		t.Errorf("valid conditions: %v", err)
 	}
 }
+
+// The UI saves conditional rules with scenario "default" when the field is
+// empty; X-Mock-Scenario: default must still mean the unconditional default.
+func TestMatching_ExplicitDefaultScenarioIgnoresConditionalRules(t *testing.T) {
+	t.Parallel()
+
+	svc, pid := matchFixture(t,
+		&domain.MockRule{Scenario: "default", StatusCode: 402, Body: `{"r":"vip"}`, Match: []domain.MatchCondition{
+			{Source: domain.MatchBody, Name: "tier", Value: "vip"},
+		}},
+		&domain.MockRule{Scenario: "", StatusCode: 200, Body: `{"r":"default"}`},
+	)
+
+	if r := serveMatch(svc, pid, "default", `{"tier":"basic"}`); r.StatusCode != 200 {
+		t.Errorf("explicit default must not return a conditional rule whose condition fails, got %d %s", r.StatusCode, r.Body)
+	}
+
+	if r := serveMatch(svc, pid, "", `{"tier":"basic"}`); r.StatusCode != 200 {
+		t.Errorf("no scenario: got %d", r.StatusCode)
+	}
+
+	// The matching conditional rule is still picked without a header.
+	if r := serveMatch(svc, pid, "", `{"tier":"vip"}`); r.StatusCode != 402 {
+		t.Errorf("conditions hold: got %d", r.StatusCode)
+	}
+}
+
+func TestMatching_UsesFirstValueOfRepeatedQueryAndHeader(t *testing.T) {
+	t.Parallel()
+
+	svc, pid := matchFixture(t,
+		&domain.MockRule{Scenario: "default", StatusCode: 200, Body: `{}`},
+		&domain.MockRule{Scenario: "multi", StatusCode: 418, Body: `{}`, Match: []domain.MatchCondition{
+			{Source: domain.MatchQuery, Name: "mode", Value: "fast"},
+			{Source: domain.MatchHeader, Name: "X-Tenant", Value: "acme"},
+		}},
+	)
+
+	req := func(modes, tenants []string) int {
+		return svc.ServeRequest(pid, &usecase.MockRequest{
+			Method: "POST", Path: "/orders/42", Body: []byte(`{}`), SkipValidation: true,
+			Query: map[string][]string{"mode": modes}, Header: map[string][]string{"X-Tenant": tenants},
+		}).StatusCode
+	}
+
+	if got := req([]string{"fast", "slow"}, []string{"acme", "other"}); got != 418 {
+		t.Errorf("first values match: got %d", got)
+	}
+
+	if got := req([]string{"slow", "fast"}, []string{"acme"}); got != 200 {
+		t.Errorf("only the first value counts: got %d", got)
+	}
+}

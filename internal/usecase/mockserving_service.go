@@ -200,12 +200,8 @@ func (s *MockServingService) findRule(
 		}
 	}
 
-	if scenario != "" {
-		for _, m := range rules {
-			if m.Scenario == scenario {
-				return m
-			}
-		}
+	if rule := explicitRule(rules, scenario); rule != nil {
+		return rule
 	}
 
 	if best := bestConditionalRule(rules, tc); best != nil {
@@ -213,6 +209,28 @@ func (s *MockServingService) findRule(
 	}
 
 	return defaultRule(rules)
+}
+
+// explicitRule returns the rule a client asked for with X-Mock-Scenario. The
+// scenario "default" is not a way to bypass conditions: it selects the
+// unconditional default rule, never a conditional rule that merely carries
+// the "default" scenario name (which is what the UI saves when the scenario
+// field is left empty).
+func explicitRule(rules []*domain.MockRule, scenario string) *domain.MockRule {
+	switch scenario {
+	case "":
+		return nil
+	case ScenarioDefault:
+		return defaultRule(rules)
+	}
+
+	for _, m := range rules {
+		if m.Scenario == scenario {
+			return m
+		}
+	}
+
+	return nil
 }
 
 // bestConditionalRule returns the rule whose conditions all match and that has

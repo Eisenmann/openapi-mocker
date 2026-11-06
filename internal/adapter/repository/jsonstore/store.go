@@ -308,7 +308,20 @@ func (s *Store) ListMocks(projectID string) []*domain.MockRule {
 		}
 	}
 
-	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	// Rules of one operation are ordered by creation time, so "the first
+	// created rule wins" in request matching is deterministic.
+	sort.Slice(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if a.Path != b.Path {
+			return a.Path < b.Path
+		}
+
+		if !a.CreatedAt.Equal(b.CreatedAt) {
+			return a.CreatedAt.Before(b.CreatedAt)
+		}
+
+		return a.ID < b.ID
+	})
 
 	return out
 }

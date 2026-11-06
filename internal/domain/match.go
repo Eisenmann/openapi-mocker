@@ -50,7 +50,7 @@ var (
 	ErrMatchSource = errors.New("match source must be one of: body, query, header, path")
 	ErrMatchName   = errors.New("match name is required")
 	ErrMatchOp     = errors.New("match op must be one of: equals, not_equals, contains, regex, exists, not_exists")
-	ErrMatchValue  = errors.New("match value is required")
+	ErrMatchValue  = errors.New("match value is required for contains and regex")
 	ErrMatchRegex  = errors.New("match value is not a valid regular expression")
 )
 
@@ -79,20 +79,7 @@ func (c MatchCondition) Validate() error {
 		return ErrMatchSource
 	}
 
-	switch c.Op {
-	case OpExists, OpNotExists:
-		return nil
-	case OpEquals, OpNotEquals, OpContains:
-	case OpRegex:
-		_, err := regexp.Compile(c.Value)
-		if err != nil {
-			return fmt.Errorf("%w: %w", ErrMatchRegex, err)
-		}
-	default:
-		return ErrMatchOp
-	}
-
-	return nil
+	return c.validateOp()
 }
 
 // Matches reports whether the value found in the request satisfies the
@@ -133,6 +120,34 @@ func (c MatchCondition) compare(text string) bool {
 	}
 }
 
+// validateOp checks the operator and that its value suits it.
+func (c MatchCondition) validateOp() error {
+	switch c.Op {
+	case OpExists, OpNotExists, OpEquals, OpNotEquals:
+		// No value is needed; an empty one matches an empty string.
+		return nil
+	case OpContains:
+		if c.Value == "" {
+			return ErrMatchValue
+		}
+
+		return nil
+	case OpRegex:
+		if c.Value == "" {
+			return ErrMatchValue
+		}
+
+		_, err := regexp.Compile(c.Value)
+		if err != nil {
+			return fmt.Errorf("%w: %w", ErrMatchRegex, err)
+		}
+
+		return nil
+	default:
+		return ErrMatchOp
+	}
+}
+
 // ValueText renders a decoded JSON value (or a Go primitive) as plain text;
 // objects and arrays become compact JSON, nil becomes "".
 func ValueText(v any) string {
@@ -168,11 +183,13 @@ func ValueText(v any) string {
 
 // LookupJSONPath returns the value at a dotted path ("user.name",
 // "items[0].id") inside a decoded JSON document; an empty path is the
-// document itself. found is false when any step is missing.
+// document itself. A backslash makes the next character literal, so
+// `units\.temp` addresses the key "units.temp". found is false when any
+// step is missing.
 func LookupJSONPath(doc any, path string) (v any, found bool) {
 	cur := doc
 
-	for _, seg := range strings.FieldsFunc(path, func(r rune) bool { return r == '.' || r == '[' || r == ']' }) {
+	for _, seg := range splitPath(path) {
 		cur, found = descend(cur, seg)
 		if !found {
 			return nil, false
@@ -199,4 +216,40 @@ func descend(cur any, seg string) (v any, found bool) {
 	default:
 		return nil, false
 	}
+}
+
+// splitPath cuts a JSON path into its segments at '.', '[' and ']'. A
+// backslash escapes the following character, so keys may contain those.
+func splitPath(path string) []string {
+	var (
+		segs []string
+		cur  strings.Builder
+		esc  bool
+	)
+
+	flush := func() {
+		if cur.Len() > 0 {
+			segs = append(segs, cur.String())
+			cur.Reset()
+		}
+	}
+
+	for _, r := range path {
+		switch {
+		case esc:
+			cur.WriteRune(r)
+
+			esc = false
+		case r == '\\':
+			esc = true
+		case r == '.' || r == '[' || r == ']':
+			flush()
+		default:
+			cur.WriteRune(r)
+		}
+	}
+
+	flush()
+
+	return segs
 }
