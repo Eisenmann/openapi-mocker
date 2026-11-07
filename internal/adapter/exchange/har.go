@@ -92,6 +92,10 @@ func addHAREntry(idx *endpointIndex, hosts map[string]bool, e *harEntry) bool {
 	ep := idx.get(e.Request.Method, path)
 
 	for name, typ := range types {
+		if prev, seen := ep.PathTypes[name]; seen && prev != typ {
+			typ = "string" // samples of different types: only a string fits all.
+		}
+
 		ep.PathTypes[name] = typ
 	}
 

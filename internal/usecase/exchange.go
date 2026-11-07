@@ -113,6 +113,7 @@ type BundleProject struct {
 	Description    string                `json:"description"`
 	ValidationMode domain.ValidationMode `json:"validationMode,omitempty"`
 	StateMode      domain.StateMode      `json:"stateMode,omitempty"`
+	Auth           *domain.AuthConfig    `json:"auth,omitempty"`
 }
 
 // BundleContract is one contract version in a bundle, oldest first.

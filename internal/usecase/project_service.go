@@ -101,6 +101,23 @@ func (s *ProjectService) UpdateProxy(id string, patch ProxyPatch) (*domain.Proje
 	return s.repo.SetProxy(id, cfg)
 }
 
+// SetAuth replaces the project's auth simulation after validating it. A nil
+// config, or one whose mode is "off", switches the simulation off.
+func (s *ProjectService) SetAuth(id string, cfg *domain.AuthConfig) (*domain.Project, error) {
+	if cfg != nil {
+		err := cfg.Validate()
+		if err != nil {
+			return nil, err
+		}
+
+		if cfg.Mode == "" {
+			cfg.Mode = domain.AuthOff
+		}
+	}
+
+	return s.repo.SetAuth(id, cfg)
+}
+
 func (s *ProjectService) Delete(id string) error {
 	return s.repo.Delete(id)
 }

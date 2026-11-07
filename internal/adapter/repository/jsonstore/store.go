@@ -193,6 +193,22 @@ func (s *Store) SetProxy(id string, cfg domain.ProxyConfig) (*domain.Project, er
 	return p, s.save()
 }
 
+// SetAuth replaces the project's auth simulation.
+func (s *Store) SetAuth(id string, cfg *domain.AuthConfig) (*domain.Project, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	p, ok := s.d.Projects[id]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+
+	p.Auth = cfg
+	p.UpdatedAt = time.Now().UTC()
+
+	return p, s.save()
+}
+
 func (s *Store) Delete(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

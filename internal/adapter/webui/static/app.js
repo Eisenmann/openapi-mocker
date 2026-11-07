@@ -201,6 +201,7 @@ function renderContent() {
   content.appendChild(el('p', { class: 'muted' }, `Mock base URL: `));
   content.lastChild.appendChild(el('code', {}, `${location.origin}/mock/${project.id}/...`));
   content.appendChild(exportControl(project));
+  content.appendChild(authControl(project));
   content.appendChild(validationModeControl(project));
   content.appendChild(stateModeControl(project));
 
@@ -253,6 +254,81 @@ function validationModeControl(project) {
     el('label', { for: 'validationMode', style: 'margin:0;' }, 'Request validation'),
     select,
   ]);
+}
+
+// Auth simulation: OAuth2 token endpoint, bearer / basic / API-key checks and
+// per-credential scenarios (expired, revoked, forbidden, insufficient_scope).
+const AUTH_MODES = [
+  ['off', 'Off - no credentials needed'],
+  ['contract', "Contract - follow the contract's security requirements"],
+  ['all', 'All - every request needs a credential'],
+];
+
+const AUTH_EXAMPLE = {
+  tokenTtlSeconds: 3600,
+  credentials: [
+    { name: 'admin', value: 'admin-token' },
+    { name: 'reader', value: 'reader-token', scopes: ['read'] },
+    { name: 'expired', value: 'expired-token', scenario: 'expired' },
+    { name: 'banned', value: 'banned-token', scenario: 'forbidden' },
+  ],
+  users: [{ username: 'ann', password: 'secret', scopes: ['read'] }],
+  clients: [{ id: 'svc', secret: 's3cret', scopes: ['read', 'write'] }],
+};
+
+function authControl(project) {
+  const modeSelect = el('select', { id: 'authMode', style: 'max-width:460px;' },
+    AUTH_MODES.map(([value, label]) => el('option', { value }, label)));
+  const editor = el('textarea', { rows: '14', spellcheck: 'false', style: 'width:100%;font-family:monospace;' });
+  const hint = el('p', { class: 'muted', style: 'margin:4px 0;' });
+  const box = el('details', { class: 'auth-sim', style: 'margin-bottom:12px;' }, [
+    el('summary', { style: 'cursor:pointer;' }, 'Auth simulation'),
+    el('div', { style: 'margin-top:8px;' }, [
+      el('div', { class: 'row', style: 'align-items:center; gap:8px; margin-bottom:8px;' }, [
+        el('label', { for: 'authMode', style: 'margin:0;' }, 'Mode'), modeSelect,
+      ]),
+      hint,
+      editor,
+      el('div', { class: 'row', style: 'gap:8px; margin-top:8px;' }, [
+        el('button', { class: 'btn btn-primary btn-sm', onclick: save }, 'Save'),
+        el('button', { class: 'btn btn-secondary btn-sm', onclick: () => { editor.value = JSON.stringify(AUTH_EXAMPLE, null, 2); } }, 'Insert example'),
+      ]),
+    ]),
+  ]);
+
+  function showHint(cfg) {
+    const path = cfg.tokenPath || '/oauth/token';
+    hint.textContent = `Token endpoint: POST /mock/${project.id}${path} (client_credentials, password, authorization_code, refresh_token). `
+      + 'Credential scenarios: expired, revoked (401), forbidden, insufficient_scope (403). Empty scopes mean every scope.';
+  }
+
+  async function load() {
+    try {
+      const cfg = await api(`/api/projects/${project.id}/auth`);
+      modeSelect.value = cfg.mode || 'off';
+      const { mode, ...rest } = cfg;
+      editor.value = Object.keys(rest).length ? JSON.stringify(rest, null, 2) : '';
+      showHint(cfg);
+      if (cfg.mode && cfg.mode !== 'off') box.open = true;
+    } catch (err) { toast(err.message, 'error'); }
+  }
+
+  async function save() {
+    let rest = {};
+    try {
+      rest = editor.value.trim() ? JSON.parse(editor.value) : {};
+    } catch (err) { toast(`Invalid JSON: ${err.message}`, 'error'); return; }
+    try {
+      const cfg = await api(`/api/projects/${project.id}/auth`, {
+        method: 'PUT', body: JSON.stringify({ ...rest, mode: modeSelect.value }),
+      });
+      showHint(cfg);
+      toast(`Auth simulation: ${cfg.mode}`);
+    } catch (err) { toast(err.message, 'error'); }
+  }
+
+  load();
+  return box;
 }
 
 // Stateful mocks: POST/PUT/PATCH/DELETE change what later GETs return.

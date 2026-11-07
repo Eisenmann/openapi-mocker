@@ -21,6 +21,10 @@ func (a *api) serveMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if a.guardEndpoint(w, r) {
+		return
+	}
+
 	defer r.Body.Close()
 
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxMCPBodyBytes))
@@ -39,16 +43,7 @@ func (a *api) serveMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Request validation outcome, visible to HTTP-level tooling (the same
-	// header the REST mock uses). Warnings are also in the result's _meta.
-	if len(result.Violations) > 0 {
-		verdict := "warn"
-		if result.Rejected {
-			verdict = "rejected"
-		}
-
-		w.Header().Set("X-Mock-Validation", fmt.Sprintf("%s: %d violation(s)", verdict, len(result.Violations)))
-	}
+	setValidationHeader(w, &result)
 
 	// JSON-RPC notifications must not receive a response body; the MCP
 	// Streamable HTTP transport requires 202 Accepted for them.
@@ -71,6 +66,22 @@ func (a *api) serveMCP(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(result.Status)
 	_, _ = w.Write(result.Body)
+}
+
+// setValidationHeader reports the request validation outcome to HTTP-level
+// tooling (the same header the REST mock uses). Warnings are also in the
+// result's _meta.
+func setValidationHeader(w http.ResponseWriter, result *usecase.MCPResponse) {
+	if len(result.Violations) == 0 {
+		return
+	}
+
+	verdict := "warn"
+	if result.Rejected {
+		verdict = "rejected"
+	}
+
+	w.Header().Set("X-Mock-Validation", fmt.Sprintf("%s: %d violation(s)", verdict, len(result.Violations)))
 }
 
 // mcpTools lists the tools declared by the project MCP manifest - the same

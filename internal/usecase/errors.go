@@ -43,7 +43,8 @@ func StatusFromError(err error) int {
 	case errors.Is(err, ErrInvalidValidationMode), errors.Is(err, ErrInvalidStateMode),
 		errors.Is(err, ErrStateNotEnabled), errors.Is(err, ErrSeedNotArray), errors.Is(err, ErrSeedInvalid),
 		errors.Is(err, ErrInvalidMatch), errors.Is(err, ErrInvalidFault),
-		errors.Is(err, ErrInvalidProxy), errors.Is(err, ErrInvalidExport), errors.Is(err, ErrInvalidImport):
+		errors.Is(err, ErrInvalidProxy), errors.Is(err, domain.ErrInvalidAuth),
+		errors.Is(err, ErrInvalidExport), errors.Is(err, ErrInvalidImport):
 		return StatusBadRequest
 	default:
 		return StatusInternalServerError

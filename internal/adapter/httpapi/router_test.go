@@ -93,6 +93,20 @@ func (m *memProjectRepo) SetStateMode(id string, mode domain.StateMode) (*domain
 	return p, nil
 }
 
+func (m *memProjectRepo) SetAuth(id string, cfg *domain.AuthConfig) (*domain.Project, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	p, ok := m.projects[id]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+
+	p.Auth = cfg
+
+	return p, nil
+}
+
 func (m *memProjectRepo) SetProxy(id string, cfg domain.ProxyConfig) (*domain.Project, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

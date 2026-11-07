@@ -72,6 +72,8 @@ type Project struct {
 	UpstreamURL string    `json:"upstreamUrl"`
 	ProxyMode   ProxyMode `json:"proxyMode"`
 	DriftCheck  bool      `json:"driftCheck"`
-	CreatedAt   time.Time `json:"createdAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+	// Auth simulates authentication on the mock server (nil means off).
+	Auth      *AuthConfig `json:"auth,omitempty"`
+	CreatedAt time.Time   `json:"createdAt"`
+	UpdatedAt time.Time   `json:"updatedAt"`
 }

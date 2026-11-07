@@ -90,6 +90,10 @@ func (s *MockServingService) Serve(projectID, method, path, scenario string) Moc
 func (s *MockServingService) ServeRequest(projectID string, req *MockRequest) MockResponse {
 	method, path := req.Method, req.Path
 
+	if resp, ok := s.cfg.auth.HandleToken(projectID, req); ok {
+		return s.finish(projectID, method, path, resp)
+	}
+
 	contract, err := s.contracts.GetActive(projectID)
 	if err != nil {
 		return s.finish(projectID, method, path, &MockResponse{
@@ -104,6 +108,10 @@ func (s *MockServingService) ServeRequest(projectID string, req *MockRequest) Mo
 			StatusCode: StatusNotFound, ContentType: ContentTypeJSON,
 			Body: errorBody(fmt.Sprintf("endpoint not described in contract: %s %s", method, path)),
 		})
+	}
+
+	if denied := s.cfg.auth.Authorize(projectID, contract.Raw, req); denied != nil {
+		return s.finish(projectID, method, path, denied)
 	}
 
 	violations := s.validate(projectID, contract.Raw, req)
