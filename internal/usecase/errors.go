@@ -36,6 +36,10 @@ func StatusFromError(err error) int {
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
 		return StatusNotFound
+	case errors.Is(err, ErrUnauthenticated):
+		return StatusUnauthorized
+	case errors.Is(err, ErrForbidden):
+		return StatusForbidden
 	case errors.Is(err, ErrNotGraphQLContract):
 		return StatusBadRequest
 	case errors.Is(err, ErrNotMCPContract):
@@ -43,7 +47,7 @@ func StatusFromError(err error) int {
 	case errors.Is(err, ErrInvalidValidationMode), errors.Is(err, ErrInvalidStateMode),
 		errors.Is(err, ErrStateNotEnabled), errors.Is(err, ErrSeedNotArray), errors.Is(err, ErrSeedInvalid),
 		errors.Is(err, ErrInvalidMatch), errors.Is(err, ErrInvalidFault),
-		errors.Is(err, ErrInvalidProxy), errors.Is(err, domain.ErrInvalidAuth),
+		errors.Is(err, ErrInvalidProxy), errors.Is(err, domain.ErrInvalidAuth), errors.Is(err, domain.ErrInvalidAccess),
 		errors.Is(err, ErrInvalidExport), errors.Is(err, ErrInvalidImport):
 		return StatusBadRequest
 	default:

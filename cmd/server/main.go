@@ -18,6 +18,9 @@
 // "openapi-mocker mcp-stdio MANIFEST.json" serves an MCP manifest over the
 // MCP stdio transport for editors and agents (see mcpstdio.go).
 //
+// ADMIN_TOKEN, when set, is a server-wide admin API token: it works in every
+// project (also one whose own tokens are lost) and its changes are audited as "admin".
+//
 // MCP_REQUIRE_SESSION=true makes the HTTP MCP endpoint demand Mcp-Session-Id.
 package main
 
@@ -111,6 +114,7 @@ func runServer() {
 		CodeGenAgent:   codeGenAgent,
 
 		MCPRequireSession: os.Getenv("MCP_REQUIRE_SESSION") == "true",
+		Access:            usecase.NewAccessService(store, store, store, usecase.WithAdminToken(os.Getenv("ADMIN_TOKEN"))),
 	}
 
 	// ---- Interface Adapter: HTTP controllers + routing ----.

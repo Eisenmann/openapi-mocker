@@ -43,6 +43,9 @@ type Services struct {
 	// MCPRequireSession makes the MCP endpoint reject requests that carry
 	// no Mcp-Session-Id (other than initialize), like a strict server.
 	MCPRequireSession bool
+	// Access manages API tokens, share links and the audit log; nil turns
+	// access control off.
+	Access *usecase.AccessService
 }
 
 type api struct {

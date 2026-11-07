@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -84,6 +85,7 @@ func (a *api) saveContract(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	setAuditNote(r, fmt.Sprintf("version %d (%s, source %s)", c.Version, c.Format, c.Source))
 	writeJSON(w, http.StatusCreated, c)
 }
 
@@ -101,6 +103,7 @@ func (a *api) rollbackContract(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	setAuditNote(r, fmt.Sprintf("back to version %d as new version %d", version, c.Version))
 	writeJSON(w, http.StatusCreated, c)
 }
 
