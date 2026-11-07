@@ -29,6 +29,7 @@ type Services struct {
 	Projects       *usecase.ProjectService
 	Contracts      *usecase.ContractService
 	Mocks          *usecase.MockService
+	Exchange       *usecase.ExchangeService
 	Providers      *usecase.ProviderService
 	MockServing    *usecase.MockServingService
 	GraphQLServing *usecase.GraphQLServingService

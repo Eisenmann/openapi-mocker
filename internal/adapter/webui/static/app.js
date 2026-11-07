@@ -83,6 +83,60 @@ $('#btnNewProject').addEventListener('click', () => {
   });
 });
 
+// Import: Postman / Insomnia collections, HAR files, OpenAPI / Swagger contracts
+// and project bundles all become a new project.
+$('#btnImport').addEventListener('click', () => $('#importFile').click());
+$('#importFile').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    const name = encodeURIComponent(file.name.replace(/\.[^.]+$/, ''));
+    const resp = await fetch(`/api/import?name=${name}`, { method: 'POST', body: await file.text() });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.error || `Import failed (${resp.status})`);
+    await loadProjects();
+    selectProject(data.project.id);
+    showImportSummary(data);
+  } catch (err) { toast(err.message, 'error'); }
+});
+
+function showImportSummary(res) {
+  const lines = [`${res.kind}: ${res.endpoints} endpoints, ${res.mocks} mocks, ${res.contracts} contract version(s).`];
+  const modal = el('div', { class: 'modal' }, [
+    el('h3', {}, `Imported "${res.project.name}"`),
+    el('p', {}, lines[0]),
+    ...(res.warnings && res.warnings.length ? [el('p', { class: 'muted' }, 'Notes:'), el('pre', {}, res.warnings.join('\n'))] : []),
+    el('div', { class: 'row', style: 'margin-top:16px;justify-content:flex-end;' }, [
+      el('button', { class: 'btn btn-primary', onclick: closeModal }, 'OK'),
+    ]),
+  ]);
+  const root = $('#modalRoot');
+  root.innerHTML = '';
+  root.appendChild(el('div', { class: 'modal-backdrop', onclick: (ev) => { if (ev.target.classList.contains('modal-backdrop')) closeModal(); } }, modal));
+}
+
+// Export: links that download straight from the server.
+const EXPORTS = [
+  ['Project bundle', 'export?format=bundle'],
+  ['Bundle + history', 'export?format=bundle&history=1'],
+  ['Postman', 'export?format=postman'],
+  ['Insomnia', 'export?format=insomnia'],
+  ['OpenAPI 3.0', 'contract/export?format=openapi3&as=yaml'],
+  ['OpenAPI 3.1', 'contract/export?format=openapi31&as=yaml'],
+  ['Swagger 2', 'contract/export?format=swagger2&as=yaml'],
+];
+
+function exportControl(project) {
+  return el('details', { class: 'export-menu', style: 'margin-bottom:12px;' }, [
+    el('summary', { style: 'cursor:pointer;' }, 'Export'),
+    el('div', { class: 'row', style: 'gap:8px;flex-wrap:wrap;margin-top:8px;' },
+      EXPORTS.map(([label, path]) => el('a', {
+        class: 'btn btn-secondary btn-sm', style: 'text-decoration:none;white-space:nowrap;', href: `/api/projects/${project.id}/${path}`, download: '',
+      }, label))),
+  ]);
+}
+
 // ---------------- Modal helpers ----------------
 
 function field(name, label, type = 'text', placeholder = '', extra = {}) {
@@ -146,6 +200,7 @@ function renderContent() {
   ]));
   content.appendChild(el('p', { class: 'muted' }, `Mock base URL: `));
   content.lastChild.appendChild(el('code', {}, `${location.origin}/mock/${project.id}/...`));
+  content.appendChild(exportControl(project));
   content.appendChild(validationModeControl(project));
   content.appendChild(stateModeControl(project));
 
@@ -458,6 +513,7 @@ async function validateContract() {
     box.innerHTML = '';
     if (result.valid) {
       box.appendChild(el('div', { class: 'toast success', style: 'position:static;display:inline-block;' }, `Valid: ${result.pathCount} paths, ${result.operationCount} operations`));
+      if (result.note) box.appendChild(el('p', { class: 'muted' }, `${result.note}; saving stores the converted contract.`));
     } else {
       box.appendChild(el('pre', {}, result.errors.join('\n')));
     }

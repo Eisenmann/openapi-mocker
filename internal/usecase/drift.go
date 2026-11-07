@@ -18,6 +18,9 @@ const (
 	maxParallelDrifts = 4
 	maxDifferences    = 50
 	kindNull          = "null"
+	kindString        = "string"
+	kindArray         = "array"
+	kindObject        = "object"
 )
 
 // WaitDrift blocks until the drift checks started so far are done. Tests and
@@ -177,7 +180,7 @@ func mediaType(contentType string) string {
 func isJSONType(contentType string) bool {
 	mt := mediaType(contentType)
 
-	return mt == "application/json" || strings.HasSuffix(mt, "+json")
+	return mt == ContentTypeJSON || strings.HasSuffix(mt, "+json")
 }
 
 // diffJSON appends the structural differences between two JSON values. For
@@ -261,11 +264,11 @@ func jsonKind(v any) string {
 	case bool:
 		return "boolean"
 	case string:
-		return "string"
+		return kindString
 	case []any:
-		return "array"
+		return kindArray
 	case map[string]any:
-		return "object"
+		return kindObject
 	default:
 		return "number"
 	}

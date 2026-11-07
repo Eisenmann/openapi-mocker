@@ -45,7 +45,7 @@ var (
 // fakerFuncs maps {{faker.<fn>}} to its generator; a generator reports false
 // for bad arguments, so the placeholder stays as written.
 var fakerFuncs = map[string]func(args []string) (any, bool){
-	"name":      func([]string) (any, bool) { return pick(fakerFirstNames) + " " + pick(fakerLastNames), true },
+	wordName:    func([]string) (any, bool) { return pick(fakerFirstNames) + " " + pick(fakerLastNames), true },
 	"firstName": func([]string) (any, bool) { return pick(fakerFirstNames), true },
 	"lastName":  func([]string) (any, bool) { return pick(fakerLastNames), true },
 	"username": func([]string) (any, bool) {

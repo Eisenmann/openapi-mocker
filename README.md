@@ -207,6 +207,30 @@ desktop, in Docker, and in Kubernetes.
      for an operation always wins over state, and operations that do not follow
      the conventions stay static. Query parameters (filters, paging) are not
      applied to lists.
+   - **Import and export.** `Import…` in the sidebar (or `POST /api/import`,
+     the file as the request body or a multipart `file` field, optional
+     `?name=`, up to 32 MB) creates a new project from:
+     a **Postman** collection (v2.x), an **Insomnia** export (v4 JSON or v5
+     YAML), a **HAR** file, an **OpenAPI 3.0/3.1 or Swagger 2** contract
+     (JSON or YAML) or an **openapi-mocker bundle**. For collections and HAR
+     files the contract is inferred (templated paths such as `/users/{userId}`,
+     path and query parameters, request bodies and response schemas merged from
+     the examples) and every saved response becomes a mock rule: the lowest 2xx
+     is the default scenario, the other status codes are scenarios named
+     `status-<code>`. HAR entries that are not API calls (assets, preflights,
+     `304`) are skipped; `Set-Cookie`, `Authorization` and similar headers are
+     never imported. Swagger 2.0 and OpenAPI 3.1 contracts are converted to
+     OpenAPI 3.0.3 when published or validated (also in the Contract tab); the
+     conversion note is shown, and 3.1-only keywords with no 3.0 equivalent
+     (`prefixItems`, `if/then/else`, `webhooks`, ...) are dropped and listed.
+     Export: `GET /api/projects/{id}/export?format=bundle|postman|insomnia`
+     (`&history=1` puts every contract version into the bundle) and
+     `GET /api/projects/{id}/contract/export?format=openapi3|openapi31|swagger2&as=yaml|json`.
+     A **bundle** is a single JSON file with the project settings, the
+     contract(s) and the mock rules, for sharing; import it to get a copy.
+     Mock state, logs, drift reports, LLM providers and the upstream URL are not
+     included. Recorded bodies in HAR files and collections can contain secrets:
+     review them before sharing a bundle.
    - **Request log** to the mock server (method/path/status/time) right in the UI.
    - **"Try it" in the browser** — sending a request to the mock without
      Postman/curl.
@@ -276,6 +300,9 @@ kubectl -n openapi-mocker port-forward svc/openapi-mocker 8080:80
 | `GET /api/projects/{id}/codegen/server` | download Go server zip |
 | `GET /api/projects/{id}/codegen/client` | download Go client zip |
 | `GET /api/projects/{id}/logs` | recent mock requests |
+| `POST /api/import` | create a project from a Postman / Insomnia / HAR / OpenAPI / Swagger file or a bundle |
+| `GET /api/projects/{id}/export` | download a bundle, Postman or Insomnia collection (`format`, `history`) |
+| `GET /api/projects/{id}/contract/export` | contract as OpenAPI 3.0 / 3.1 or Swagger 2 (`format`, `as`) |
 | `GET/DELETE /api/projects/{id}/drift` | contract-drift reports of the proxy (list / clear) |
 | `ANY /mock/{projectId}/**` | the mock server itself (by project contract) |
 

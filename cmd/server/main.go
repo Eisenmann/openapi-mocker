@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/codegen"
+	"github.com/Eisenmann/openapi-mocker/internal/adapter/exchange"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/graphql"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/httpapi"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/llm"
@@ -77,18 +78,14 @@ func runServer() {
 	}
 
 	stateService := usecase.NewStateService(stateStore, store, contractEngine)
-	// Breaking-change alerts: logged, and posted to ALERT_WEBHOOK_URL when set.
-	alertNotifier, err := notifier.NewWithWebhook(os.Getenv("ALERT_WEBHOOK_URL"))
-	if err != nil {
-		log.Fatalf("invalid ALERT_WEBHOOK_URL: %v", err)
-	}
-
-	contractService := usecase.NewContractService(store, store, contractEngine, llmGateway, validators).
-		WithChangeAlerts(contractEngine, alertNotifier.Alerts())
+	contractService := newContractService(store, contractEngine, llmGateway, validators)
+	projectService := usecase.NewProjectService(store)
+	mockService := usecase.NewMockService(store, store, store, contractEngine, llmGateway)
 	services := httpapi.Services{
-		Projects:  usecase.NewProjectService(store),
+		Projects:  projectService,
 		Contracts: contractService,
-		Mocks:     usecase.NewMockService(store, store, store, contractEngine, llmGateway),
+		Mocks:     mockService,
+		Exchange:  usecase.NewExchangeService(projectService, store, contractService, mockService, exchange.New()),
 		Providers: usecase.NewProviderService(store, llmGateway),
 		MockServing: usecase.NewMockServingService(
 			store, store, store, contractEngine, usecase.WithProjects(store), usecase.WithState(stateService),
@@ -187,4 +184,19 @@ func initCodeGenerationAgent(appLogger *logger.Logger) *agents.CodeGenerationAge
 		&agents.DefaultResultValidator{},
 		notifier.New(),
 	)
+}
+
+// newContractService assembles the contract use cases. Breaking-change alerts
+// are logged, and posted to ALERT_WEBHOOK_URL when it is set.
+func newContractService(
+	store *jsonstore.Store, engine *openapi.Engine, gateway usecase.LLMGateway, validators usecase.FormatValidators,
+) *usecase.ContractService {
+	alertNotifier, err := notifier.NewWithWebhook(os.Getenv("ALERT_WEBHOOK_URL"))
+	if err != nil {
+		log.Fatalf("invalid ALERT_WEBHOOK_URL: %v", err)
+	}
+
+	return usecase.NewContractService(store, store, engine, gateway, validators).
+		WithChangeAlerts(engine, alertNotifier.Alerts()).
+		WithConverter(engine)
 }
