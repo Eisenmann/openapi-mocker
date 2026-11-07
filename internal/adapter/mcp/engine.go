@@ -26,11 +26,6 @@ const (
 	codeInternalError  = -32603
 )
 
-// supportedProtocolVersions lists the MCP protocol revisions the mock speaks,
-// newest first. The mock only implements the tools surface, which is wire
-// compatible across these revisions.
-var supportedProtocolVersions = []string{"2025-06-18", "2025-03-26", "2024-11-05"}
-
 // negotiateProtocolVersion echoes the client's requested version when it is
 // supported, otherwise answers with the newest version the mock supports
 // (per the MCP lifecycle spec the client then decides whether to continue).
@@ -42,19 +37,19 @@ func negotiateProtocolVersion(params json.RawMessage) string {
 		_ = json.Unmarshal(params, &p)
 	}
 
-	for _, v := range supportedProtocolVersions {
+	for _, v := range usecase.MCPSupportedProtocolVersions {
 		if v == p.ProtocolVersion {
 			return v
 		}
 	}
 
-	return supportedProtocolVersions[0]
+	return usecase.MCPSupportedProtocolVersions[0]
 }
 
 // Static manifest validation errors (wrapped with details where useful).
 var (
 	errNotManifest      = errors.New("no mcpServer block and no tools array: not an MCP server manifest")
-	errNoTools          = errors.New("manifest declares no tools")
+	errNoTools          = errors.New("manifest declares no tools, resources or prompts")
 	errToolNameRequired = errors.New("tool name is required")
 	errDuplicateTool    = errors.New("duplicate tool name")
 )
@@ -63,9 +58,12 @@ var (
 //   - mcpServer root: the canonical openapi-mocker layout
 //   - flat external layout: serverInfo + tools at the root
 type manifest struct {
-	Name    string
-	Version string
-	Tools   []manifestTool
+	Name      string
+	Version   string
+	Tools     []manifestTool
+	Resources []manifestResource
+	Templates []manifestResource
+	Prompts   []manifestPrompt
 }
 
 // manifestTool is one tool entry from the manifest.
@@ -73,6 +71,9 @@ type manifestTool struct {
 	Name          string                     `json:"name"`
 	Description   string                     `json:"description"`
 	InputSchema   json.RawMessage            `json:"inputSchema"`
+	Title         string                     `json:"title"`
+	OutputSchema  json.RawMessage            `json:"outputSchema"`
+	Annotations   json.RawMessage            `json:"annotations"`
 	MockResponses map[string]json.RawMessage `json:"mockResponses"`
 	// Fault declares fault injection for every call of the tool (see fault.go).
 	Fault json.RawMessage `json:"fault"`
@@ -94,16 +95,22 @@ type serverInfoShape struct {
 
 // mcpServerShape is the canonical openapi-mocker layout.
 type mcpServerShape struct {
-	Name    string         `json:"name"`
-	Version string         `json:"version"`
-	Tools   []manifestTool `json:"tools"`
+	Name      string             `json:"name"`
+	Version   string             `json:"version"`
+	Tools     []manifestTool     `json:"tools"`
+	Resources []manifestResource `json:"resources"`
+	Templates []manifestResource `json:"resourceTemplates"`
+	Prompts   []manifestPrompt   `json:"prompts"`
 }
 
 // outerShape probes which layout the raw document uses.
 type outerShape struct {
-	MCPServer  *mcpServerShape  `json:"mcpServer"`
-	ServerInfo *serverInfoShape `json:"serverInfo"`
-	Tools      []manifestTool   `json:"tools"`
+	MCPServer  *mcpServerShape    `json:"mcpServer"`
+	ServerInfo *serverInfoShape   `json:"serverInfo"`
+	Tools      []manifestTool     `json:"tools"`
+	Resources  []manifestResource `json:"resources"`
+	Templates  []manifestResource `json:"resourceTemplates"`
+	Prompts    []manifestPrompt   `json:"prompts"`
 }
 
 // parse decodes and validates a manifest. It returns an error for anything
@@ -117,35 +124,59 @@ func parse(raw []byte) (*manifest, error) {
 		return nil, fmt.Errorf("invalid JSON: %w", err)
 	}
 
-	m := &manifest{Name: "", Version: "", Tools: nil}
-
-	switch {
-	case outer.MCPServer != nil:
-		m.Name = outer.MCPServer.Name
-		m.Version = outer.MCPServer.Version
-		m.Tools = outer.MCPServer.Tools
-	case outer.Tools != nil:
-		m.Name = ""
-		if outer.ServerInfo != nil {
-			m.Name = outer.ServerInfo.Name
-			m.Version = outer.ServerInfo.Version
-		}
-
-		m.Tools = outer.Tools
-	default:
+	m, ok := outer.manifest()
+	if !ok {
 		return nil, errNotManifest
 	}
 
-	if len(m.Tools) == 0 {
+	if len(m.Tools)+len(m.Resources)+len(m.Templates)+len(m.Prompts) == 0 {
 		return nil, errNoTools
 	}
 
-	err = validateTools(m.Tools)
+	err = m.validate()
 	if err != nil {
 		return nil, err
 	}
 
 	return m, nil
+}
+
+// manifest picks the layout the document uses (false: neither).
+func (o *outerShape) manifest() (*manifest, bool) {
+	m := &manifest{Name: "", Version: "", Tools: nil, Resources: nil, Templates: nil, Prompts: nil}
+
+	switch {
+	case o.MCPServer != nil:
+		srv := o.MCPServer
+		m.Name, m.Version = srv.Name, srv.Version
+		m.Tools, m.Resources, m.Templates, m.Prompts = srv.Tools, srv.Resources, srv.Templates, srv.Prompts
+	case o.Tools != nil || o.Resources != nil || o.Templates != nil || o.Prompts != nil:
+		if o.ServerInfo != nil {
+			m.Name = o.ServerInfo.Name
+			m.Version = o.ServerInfo.Version
+		}
+
+		m.Tools, m.Resources, m.Templates, m.Prompts = o.Tools, o.Resources, o.Templates, o.Prompts
+	default:
+		return nil, false
+	}
+
+	return m, true
+}
+
+// validate checks every part of the manifest.
+func (m *manifest) validate() error {
+	err := validateTools(m.Tools)
+	if err != nil {
+		return err
+	}
+
+	err = validateResources(m.Resources, m.Templates)
+	if err != nil {
+		return err
+	}
+
+	return validatePrompts(m.Prompts)
 }
 
 // checkMatches reports a malformed "match" in any of the tool's responses.
@@ -176,7 +207,12 @@ func validateTools(tools []manifestTool) error {
 
 		seen[t.Name] = true
 
-		err := t.checkMatches()
+		err := t.checkMetadata()
+		if err != nil {
+			return fmt.Errorf("tool %q: %w", t.Name, err)
+		}
+
+		err = t.checkMatches()
 		if err != nil {
 			return fmt.Errorf("tool %q: %w", t.Name, err)
 		}
@@ -195,10 +231,15 @@ func validateTools(tools []manifestTool) error {
 func (e *Engine) Validate(raw []byte) usecase.MCPValidationResult {
 	m, err := parse(raw)
 	if err != nil {
-		return usecase.MCPValidationResult{Valid: false, Errors: []string{err.Error()}, ToolCount: 0}
+		return usecase.MCPValidationResult{
+			Valid: false, Errors: []string{err.Error()}, ToolCount: 0, ResourceCount: 0, PromptCount: 0,
+		}
 	}
 
-	return usecase.MCPValidationResult{Valid: true, Errors: nil, ToolCount: len(m.Tools)}
+	return usecase.MCPValidationResult{
+		Valid: true, Errors: nil, ToolCount: len(m.Tools),
+		ResourceCount: len(m.Resources) + len(m.Templates), PromptCount: len(m.Prompts),
+	}
 }
 
 // ParseAndValidate is the strict variant used at publish time.
@@ -220,16 +261,21 @@ func (e *Engine) ListTools(raw []byte) ([]usecase.MCPTool, error) {
 // tools converts the manifest tools into the tools/list representation.
 func (m *manifest) tools() []usecase.MCPTool {
 	tools := make([]usecase.MCPTool, 0, len(m.Tools))
-	for _, t := range m.Tools {
+	for i := range m.Tools {
+		t := &m.Tools[i]
+
 		schema := t.InputSchema
 		if len(schema) == 0 {
 			schema = json.RawMessage(`{"type":"object"}`)
 		}
 
 		tools = append(tools, usecase.MCPTool{
-			Name:        t.Name,
-			Description: t.Description,
-			InputSchema: schema,
+			Name:         t.Name,
+			Title:        t.Title,
+			Description:  t.Description,
+			InputSchema:  schema,
+			OutputSchema: nonNull(t.OutputSchema),
+			Annotations:  nonNull(t.Annotations),
 		})
 	}
 
@@ -447,25 +493,41 @@ func (e *Engine) executeOne(m *manifest, req []byte, st *callState) ([]byte, err
 		return marshalErr(idOrNull(r.ID), codeInvalidRequest, "invalid request: method is required")
 	}
 
-	switch r.Method {
-	case "initialize":
-		return respond(r.ID, initializeResult(m, r.Params))
-	case "ping":
-		return respond(r.ID, map[string]any{})
-	case "tools/list":
-		return respond(r.ID, map[string]any{"tools": m.tools()})
-	case "tools/call":
-		return callTool(m, &r, st)
-	default:
+	h, ok := methodHandlers[r.Method]
+	if !ok {
 		return respondErr(r.ID, codeMethodNotFound, "method not found: "+r.Method)
 	}
+
+	return h(m, &r, st)
+}
+
+// methodHandler answers one JSON-RPC method.
+type methodHandler func(m *manifest, r *jsonrpcRequest, st *callState) ([]byte, error)
+
+// methodHandlers maps every supported MCP method to its handler.
+var methodHandlers = map[string]methodHandler{
+	"initialize": func(m *manifest, r *jsonrpcRequest, _ *callState) ([]byte, error) {
+		return respond(r.ID, initializeResult(m, r.Params))
+	},
+	"ping": func(_ *manifest, r *jsonrpcRequest, _ *callState) ([]byte, error) {
+		return respond(r.ID, map[string]any{})
+	},
+	"tools/list": func(m *manifest, r *jsonrpcRequest, _ *callState) ([]byte, error) {
+		return respond(r.ID, map[string]any{"tools": m.tools()})
+	},
+	"tools/call":               callTool,
+	"resources/list":           listResources,
+	"resources/templates/list": listResourceTemplates,
+	"resources/read":           readResource,
+	"prompts/list":             listPrompts,
+	"prompts/get":              getPrompt,
 }
 
 // initializeResult builds the result of the initialize request.
 func initializeResult(m *manifest, params json.RawMessage) map[string]any {
 	return map[string]any{
 		"protocolVersion": negotiateProtocolVersion(params),
-		"capabilities":    map[string]any{"tools": map[string]any{"listChanged": false}},
+		"capabilities":    m.capabilities(),
 		"serverInfo": map[string]any{
 			"name":    orDefault(m.Name, "mock-mcp-server"),
 			"version": orDefault(m.Version, "1.0.0"),
@@ -504,25 +566,40 @@ func callTool(m *manifest, r *jsonrpcRequest, st *callState) ([]byte, error) {
 		return respondErr(r.ID, codeInternalError, "injected failure for chaos testing")
 	}
 
+	result = finishResult(&tool, st, result, p.Arguments)
+
+	return respond(r.ID, withValidationWarnings(result, violations))
+}
+
+// finishResult renders the placeholders of a tool result and gives it the
+// structured content its tool's outputSchema promises.
+func finishResult(tool *manifestTool, st *callState, result map[string]any, args json.RawMessage) map[string]any {
 	if st.render != nil {
-		rendered, isMap := st.render(result, p.Arguments).(map[string]any)
+		rendered, isMap := st.render(result, args).(map[string]any)
 		if isMap {
 			result = rendered
 		}
 	}
 
-	return respond(r.ID, withValidationWarnings(result, violations))
+	if len(tool.OutputSchema) > 0 {
+		ensureStructured(result)
+	}
+
+	return result
 }
 
 // findTool returns the tool with the given name.
 func (m *manifest) findTool(name string) (manifestTool, bool) {
-	for _, t := range m.Tools {
-		if t.Name == name {
-			return t, true
+	for i := range m.Tools {
+		if m.Tools[i].Name == name {
+			return m.Tools[i], true
 		}
 	}
 
-	return manifestTool{Name: "", Description: "", InputSchema: nil, MockResponses: nil, Fault: nil}, false
+	return manifestTool{
+		Name: "", Description: "", InputSchema: nil, Title: "", OutputSchema: nil, Annotations: nil,
+		MockResponses: nil, Fault: nil,
+	}, false
 }
 
 // resolve picks the mock result for a tool call and returns it with the key of
@@ -646,7 +723,7 @@ func decodeMock(raw json.RawMessage) (map[string]any, bool) {
 		return nil, false
 	}
 
-	res := map[string]any{"content": []any{map[string]any{"type": "text", "text": string(b)}}}
+	res := map[string]any{keyContent: []any{map[string]any{keyType: keyText, keyText: string(b)}}}
 	if obj, ok := v.(map[string]any); ok {
 		res["structuredContent"] = obj
 	}
@@ -656,7 +733,7 @@ func decodeMock(raw json.RawMessage) (map[string]any, bool) {
 
 // isCallToolResult reports whether obj already has MCP CallToolResult keys.
 func isCallToolResult(obj map[string]any) bool {
-	for _, k := range []string{"content", "structuredContent", "isError"} {
+	for _, k := range []string{keyContent, "structuredContent", "isError"} {
 		if _, ok := obj[k]; ok {
 			return true
 		}

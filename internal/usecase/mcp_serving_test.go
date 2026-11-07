@@ -256,3 +256,28 @@ func TestMCPServingService_Logs_Details(t *testing.T) {
 		})
 	}
 }
+
+func TestMCPServingService_Catalog(t *testing.T) {
+	t.Parallel()
+
+	svc := usecase.NewMCPServingService(newMockContractRepo(), newMockLogRepo(), &mockMCPEngine{})
+
+	_, err := svc.Catalog("p1")
+	if err == nil {
+		t.Fatal("expected error for missing contract")
+	}
+
+	repo := newMockContractRepo()
+	repo.AddVersion("p1", usecase.FormatMCP, mcpManifest, "manual")
+
+	engine := &mockMCPEngine{catalog: usecase.MCPCatalog{Prompts: []usecase.MCPPrompt{{Name: "p"}}}}
+
+	cat, err := usecase.NewMCPServingService(repo, newMockLogRepo(), engine).Catalog("p1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(cat.Prompts) != 1 || cat.Prompts[0].Name != "p" {
+		t.Errorf("unexpected catalog: %+v", cat)
+	}
+}

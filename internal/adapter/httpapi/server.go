@@ -40,10 +40,14 @@ type Services struct {
 	Logs           *usecase.LogService
 	Drift          *usecase.DriftService
 	CodeGenAgent   CodeGenAgentPort
+	// MCPRequireSession makes the MCP endpoint reject requests that carry
+	// no Mcp-Session-Id (other than initialize), like a strict server.
+	MCPRequireSession bool
 }
 
 type api struct {
-	s Services
+	s        Services
+	sessions *mcpSessions
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {

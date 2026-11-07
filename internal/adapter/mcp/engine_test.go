@@ -170,7 +170,7 @@ func TestExecuteNotificationNoBody(t *testing.T) {
 
 func TestExecuteUnknownMethod(t *testing.T) {
 	e := NewEngine()
-	req := `{"jsonrpc": "2.0", "id": 5, "method": "resources/list"}`
+	req := `{"jsonrpc": "2.0", "id": 5, "method": "completion/complete"}`
 	out, err := e.Execute([]byte(canonicalManifest), []byte(req), "")
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
