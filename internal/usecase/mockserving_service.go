@@ -89,14 +89,15 @@ func (s *MockServingService) Serve(projectID, method, path, scenario string) Moc
 // "enforce" answers 400 with the violations instead of the mock.
 func (s *MockServingService) ServeRequest(projectID string, req *MockRequest) MockResponse {
 	method, path := req.Method, req.Path
+	sv := &served{req: req, endpoint: "", start: time.Now()}
 
 	if resp, ok := s.cfg.auth.HandleToken(projectID, req); ok {
-		return s.finish(projectID, method, path, resp)
+		return s.finish(projectID, sv, resp)
 	}
 
 	contract, err := s.contracts.GetActive(projectID)
 	if err != nil {
-		return s.finish(projectID, method, path, &MockResponse{
+		return s.finish(projectID, sv, &MockResponse{
 			StatusCode: StatusNotFound, ContentType: ContentTypeJSON,
 			Body: errorBody("no contract has been uploaded for this project yet"),
 		})
@@ -104,19 +105,21 @@ func (s *MockServingService) ServeRequest(projectID string, req *MockRequest) Mo
 
 	pathTemplate, _, found := s.engine.FindOperation([]byte(contract.Raw), method, path)
 	if !found {
-		return s.finish(projectID, method, path, &MockResponse{
+		return s.finish(projectID, sv, &MockResponse{
 			StatusCode: StatusNotFound, ContentType: ContentTypeJSON,
 			Body: errorBody(fmt.Sprintf("endpoint not described in contract: %s %s", method, path)),
 		})
 	}
 
+	sv.endpoint = pathTemplate
+
 	if denied := s.cfg.auth.Authorize(projectID, contract.Raw, req); denied != nil {
-		return s.finish(projectID, method, path, denied)
+		return s.finish(projectID, sv, denied)
 	}
 
 	violations := s.validate(projectID, contract.Raw, req)
 	if len(violations) > 0 && s.cfg.validationMode(projectID) == domain.ValidationEnforce {
-		return s.finish(projectID, method, path, rejectInvalidRequest(violations))
+		return s.finish(projectID, sv, rejectInvalidRequest(violations))
 	}
 
 	resp := s.respond(projectID, contract.Raw, pathTemplate, req)
@@ -126,7 +129,7 @@ func (s *MockServingService) ServeRequest(projectID string, req *MockRequest) Mo
 
 	s.startDrift(projectID, contract.Raw, req, resp)
 
-	return s.finish(projectID, method, path, resp)
+	return s.finish(projectID, sv, resp)
 }
 
 // validate returns the request's contract violations, or nil when validation
@@ -377,11 +380,27 @@ func (s *MockServingService) renderHeaders(headers map[string]string, tc *Templa
 	return out
 }
 
-func (s *MockServingService) finish(projectID, method, path string, resp *MockResponse) MockResponse {
+// served is what finish needs to know about the request being answered.
+type served struct {
+	req *MockRequest
+	// endpoint is the contract path template, once the operation is known.
+	endpoint string
+	start    time.Time
+}
+
+func (s *MockServingService) finish(projectID string, sv *served, resp *MockResponse) MockResponse {
+	// The duration is what the client sees: the time spent here plus the
+	// latency the HTTP adapter adds afterwards.
+	took := time.Since(sv.start).Milliseconds() + int64(resp.DelayMs)
+
 	s.logs.Add(&domain.RequestLog{
-		ProjectID: projectID, Method: method, Path: path,
+		ID: "", ProjectID: projectID, Method: sv.req.Method, Path: sv.req.Path,
 		StatusCode: resp.StatusCode, MatchedRule: resp.MatchedRule, Matched: resp.Matched,
-		Violations: resp.Violations, Fault: resp.Fault, Source: resp.Source, Timestamp: time.Now().UTC(),
+		Timestamp: time.Now().UTC(), DurationMs: took,
+		Violations: resp.Violations, Fault: resp.Fault, Source: resp.Source,
+		Endpoint: sv.endpoint, Captured: false,
+		Request:  rawCapture(sv.req.Header, sv.req.Body),
+		Response: responseCapture(resp.ContentType, resp.Headers, resp.Body),
 	})
 
 	return *resp

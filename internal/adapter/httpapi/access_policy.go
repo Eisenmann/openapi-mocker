@@ -104,6 +104,7 @@ func buildAuditTable() map[string]accessRule {
 	add(http.MethodDelete, proj+"/state/{collection...}",
 		change(domain.RoleEditor, "state.reset", "state", "collection"))
 	add(http.MethodDelete, proj+"/drift", change(domain.RoleEditor, "drift.clear", "drift", ""))
+	add(http.MethodDelete, proj+"/stats", change(domain.RoleEditor, "stats.reset", "stats", ""))
 	add(http.MethodPost, proj+"/access/tokens", change(domain.RoleAdmin, "token.create", "token", ""))
 	add(http.MethodDelete, proj+"/access/tokens/{tokenId}",
 		change(domain.RoleAdmin, "token.revoke", "token", "tokenId"))

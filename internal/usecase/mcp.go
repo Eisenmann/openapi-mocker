@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Eisenmann/openapi-mocker/internal/domain"
@@ -196,7 +197,7 @@ func (s *MCPServingService) Handle(projectID string, body []byte, scenario strin
 
 	raw, err := s.getMCP(projectID)
 	if err != nil {
-		s.logResult(projectID, &mcpOutcome{status: StatusFromError(err), rule: rule}, start)
+		s.logResult(projectID, &mcpOutcome{status: StatusFromError(err), rule: rule, request: body}, start)
 
 		return MCPResponse{}, err
 	}
@@ -209,7 +210,7 @@ func (s *MCPServingService) Handle(projectID string, body []byte, scenario strin
 	if err != nil {
 		// Only manifest-level failures reach this point; request-level
 		// problems are JSON-RPC error responses produced by the engine.
-		s.logResult(projectID, &mcpOutcome{status: StatusInternalServerError, rule: rule}, start)
+		s.logResult(projectID, &mcpOutcome{status: StatusInternalServerError, rule: rule, request: body}, start)
 
 		return MCPResponse{}, err
 	}
@@ -235,6 +236,7 @@ func (s *MCPServingService) Handle(projectID string, body []byte, scenario strin
 
 	s.logResult(projectID, &mcpOutcome{
 		status: out.Status, rule: rule, matched: !hasJSONRPCError(out.Body), violations: violations, fault: out.Fault,
+		request: body, response: out.Body,
 	}, start)
 
 	return out, nil
@@ -301,6 +303,8 @@ type mcpOutcome struct {
 	matched    bool
 	violations []string
 	fault      string
+	request    []byte
+	response   []byte
 }
 
 // logResult records a request log entry (mirrors GraphQLServingService).
@@ -317,6 +321,11 @@ func (s *MCPServingService) logResult(projectID string, o *mcpOutcome, start tim
 		DurationMs:  time.Since(start).Milliseconds(),
 		Violations:  o.violations,
 		Fault:       o.fault,
+		Source:      "",
+		Endpoint:    mcpEndpoint(o),
+		Captured:    false,
+		Request:     rawCapture(nil, o.request),
+		Response:    rawCapture(jsonHeader(), o.response),
 	})
 }
 
@@ -391,4 +400,18 @@ func hasJSONRPCError(resp []byte) bool {
 	}
 
 	return false
+}
+
+// mcpEndpoint names the operation of a served MCP request for the stats; a
+// request the manifest could not answer has none.
+func mcpEndpoint(o *mcpOutcome) string {
+	if !o.matched {
+		return ""
+	}
+
+	// The rule may end in the requested scenario, "[name]", which is chosen
+	// by the client and so is not part of the operation.
+	endpoint, _, _ := strings.Cut(o.rule, " [")
+
+	return endpoint
 }

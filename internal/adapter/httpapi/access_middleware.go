@@ -81,6 +81,9 @@ func (s *statusRecorder) Flush() {
 	_ = err
 }
 
+// Unwrap lets http.ResponseController reach the real writer (deadlines).
+func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }
+
 // withAccess enforces roles on the project-scoped management API and audits
 // its changes. A project without API tokens stays open. Routes outside that
 // API (the mock server, imports, providers) are not touched.

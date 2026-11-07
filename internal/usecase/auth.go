@@ -150,6 +150,9 @@ func (a *AuthService) AuthorizeEndpoint(projectID string, req *MockRequest) *Moc
 		a.logs.Add(&domain.RequestLog{
 			ID: "", ProjectID: projectID, Method: req.Method, Path: req.Path, StatusCode: denied.StatusCode,
 			MatchedRule: "", Matched: false, Source: SourceAuth, Timestamp: a.now().UTC(),
+			DurationMs: 0, Violations: nil, Fault: "", Endpoint: "", Captured: false,
+			Request:  rawCapture(req.Header, req.Body),
+			Response: responseCapture(denied.ContentType, denied.Headers, denied.Body),
 		})
 	}
 

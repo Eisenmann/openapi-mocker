@@ -354,6 +354,7 @@ function closeModal() { $('#modalRoot').innerHTML = ''; }
 // ---------------- Content / Tabs ----------------
 
 function renderContent() {
+  stopLiveLogs();
   const content = $('#content');
   const project = state.projects.find(p => p.id === state.currentProjectId);
   if (!project) { content.innerHTML = ''; return; }
@@ -1243,6 +1244,112 @@ async function renderProxyTab(panel, project) {
 
 // ---------------- Logs / Try it tab ----------------
 
+// The live request stream of the open project (see startLiveLogs).
+let liveLogs = null;
+
+function stopLiveLogs() {
+  if (!liveLogs) return;
+  liveLogs.abort.abort();
+  clearTimeout(liveLogs.statsTimer);
+  liveLogs = null;
+}
+
+const sleep = (ms, signal) => new Promise(resolve => {
+  const t = setTimeout(resolve, ms);
+  signal.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true });
+});
+
+// readEventStream parses a Server-Sent Events body and calls onEvent({id, event, data}).
+async function readEventStream(body, onEvent) {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) return;
+    buf += decoder.decode(value, { stream: true });
+    let end;
+    while ((end = buf.indexOf('\n\n')) >= 0) {
+      const frame = buf.slice(0, end);
+      buf = buf.slice(end + 2);
+      const ev = { id: '', event: 'message', data: '' };
+      for (const line of frame.split('\n')) {
+        if (line.startsWith(':')) continue;
+        const i = line.indexOf(':');
+        const field = i < 0 ? line : line.slice(0, i);
+        const val = i < 0 ? '' : line.slice(i + 1).replace(/^ /, '');
+        if (field === 'id') ev.id = val;
+        else if (field === 'event') ev.event = val;
+        else if (field === 'data') ev.data += (ev.data ? '\n' : '') + val;
+      }
+      if (ev.data || ev.event !== 'message') onEvent(ev);
+    }
+  }
+}
+
+// startLiveLogs streams new log entries (fetch rather than EventSource, so the
+// API token can be sent) and reconnects with Last-Event-ID after a drop.
+function startLiveLogs(projectId, on) {
+  stopLiveLogs();
+  const session = { abort: new AbortController(), lastId: '', statsTimer: null };
+  liveLogs = session;
+  const path = `/api/projects/${projectId}/logs/stream`;
+  (async () => {
+    while (!session.abort.signal.aborted) {
+      try {
+        on.status('connecting');
+        const headers = { Accept: 'text/event-stream', ...authHeaders(path) };
+        if (session.lastId) headers['Last-Event-ID'] = session.lastId;
+        const resp = await fetch(path, { headers, signal: session.abort.signal });
+        if (resp.status === 401) {
+          if (await askForToken(projectId)) continue;
+          on.status('unauthorized');
+          return;
+        }
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        on.status('live');
+        await readEventStream(resp.body, ev => {
+          if (ev.id) session.lastId = ev.id;
+          if (ev.event === 'log') on.entry(JSON.parse(ev.data));
+          else if (ev.event === 'lag') on.lag(JSON.parse(ev.data).dropped);
+        });
+      } catch (_) { /* dropped: reconnect below unless stopped */ }
+      if (session.abort.signal.aborted) return;
+      on.status('reconnecting');
+      await sleep(3000, session.abort.signal);
+    }
+  })();
+  return session;
+}
+
+function prettyBody(c) {
+  if (!c) return '(not captured)';
+  if (c.binary) return `(binary body, ${c.size} bytes)`;
+  if (!c.body) return '(empty)';
+  let text = c.body;
+  try { text = JSON.stringify(JSON.parse(c.body), null, 2); } catch (_) { /* not JSON */ }
+  return c.truncated ? `${text}\n… truncated (${c.size} bytes in total)` : text;
+}
+
+function headerLines(c) {
+  if (!c || !c.headers) return '';
+  return Object.entries(c.headers).map(([k, v]) => `${k}: ${v.join(', ')}`).sort().join('\n');
+}
+
+function captureBlock(title, c) {
+  return el('div', {}, [
+    el('h4', {}, title),
+    c && c.headers ? el('pre', { class: 'log-headers' }, headerLines(c)) : null,
+    el('pre', {}, prettyBody(c)),
+  ]);
+}
+
+function statusClass(code) {
+  if (code >= 500) return 'st-5xx';
+  if (code >= 400) return 'st-4xx';
+  return 'st-ok';
+}
+
 async function renderLogsTab(panel, project) {
   panel.innerHTML = '';
   panel.appendChild(el('div', { class: 'card' }, [
@@ -1251,23 +1358,130 @@ async function renderLogsTab(panel, project) {
     tryItForm(project.id),
   ]));
 
-  const logs = await api(`/api/projects/${project.id}/logs`);
+  const statsBody = el('tbody', {});
+  const statsInfo = el('p', { class: 'muted' }, '');
+  const logInfo = el('p', { class: 'muted' }, '');
+  const refreshStats = async () => {
+    try {
+      const st = await api(`/api/projects/${project.id}/stats`);
+      logInfo.textContent = st.logs && st.logs.mode === 'distributed'
+        ? `Distributed logging: entries are shipped to ${st.logs.sinks.join(', ') || 'no sink'}${st.logs.exportBodies ? ' with bodies' : ''}; this list shows only a recent in-memory window.`
+        : (st.logs && st.logs.sinks.length ? `Local logging; entries are also shipped to ${st.logs.sinks.join(', ')}.` : '');
+      statsInfo.textContent = `${st.total} request(s), ${st.errors} with status ≥ 400, counted since ${new Date(st.since).toLocaleString()} (kept in memory, not persisted).`;
+      statsBody.innerHTML = '';
+      for (const e of st.endpoints) {
+        statsBody.appendChild(el('tr', {}, [
+          el('td', {}, e.method), el('td', {}, e.endpoint), el('td', {}, String(e.hits)),
+          el('td', {}, String(e.errors)), el('td', {}, e.avgMs.toFixed(1)), el('td', {}, String(e.maxMs)),
+          el('td', {}, new Date(e.lastHitAt).toLocaleTimeString()),
+        ]));
+      }
+      if (!st.endpoints.length) statsBody.appendChild(el('tr', {}, [el('td', { colspan: '7', class: 'muted' }, 'No requests yet.')]));
+    } catch (e) { statsInfo.textContent = e.message; }
+  };
   panel.appendChild(el('div', { class: 'card' }, [
-    el('div', { class: 'flex-between' }, [el('h3', {}, 'Recent Requests'), el('button', { class: 'btn btn-secondary btn-sm', onclick: () => renderContent() }, 'Refresh')]),
+    el('div', { class: 'flex-between' }, [
+      el('h3', {}, 'Hits per Endpoint'),
+      el('div', {}, [
+        el('a', { class: 'btn btn-secondary btn-sm', href: '/metrics', target: '_blank' }, 'Prometheus /metrics'),
+        el('button', { class: 'btn btn-secondary btn-sm', onclick: async () => {
+          await api(`/api/projects/${project.id}/stats`, { method: 'DELETE' });
+          refreshStats();
+        } }, 'Reset'),
+      ]),
+    ]),
+    statsInfo,
     el('table', {}, [
-      el('tr', {}, [el('th', {}, 'Time'), el('th', {}, 'Method'), el('th', {}, 'Path'), el('th', {}, 'Status'), el('th', {}, 'ms'), el('th', {}, 'Source'), el('th', {}, 'Validation')]),
-      ...logs.map(l => el('tr', {}, [
-        el('td', {}, new Date(l.timestamp).toLocaleTimeString()),
-        el('td', {}, l.method),
-        el('td', {}, l.path),
-        el('td', {}, String(l.statusCode)),
-        el('td', {}, String(l.durationMs)),
-        el('td', {}, l.source || ''),
-        el('td', l.violations && l.violations.length ? { title: l.violations.join('\n') } : {},
-          l.violations && l.violations.length ? `⚠ ${l.violations.length} violation(s)` : ''),
-      ])),
+      el('thead', {}, [el('tr', {}, ['Method', 'Endpoint', 'Hits', 'Errors', 'Avg ms', 'Max ms', 'Last hit'].map(h => el('th', {}, h)))]),
+      statsBody,
     ]),
   ]));
+
+  // ---- live request log ----
+  const body = el('tbody', {});
+  const status = el('span', { class: 'live-status' }, 'connecting…');
+  const filter = el('input', { placeholder: 'filter: path, method or status', style: 'max-width:260px' });
+  let paused = false;
+  let dropped = 0;
+  const seen = new Set();
+  const pauseBtn = el('button', { class: 'btn btn-secondary btn-sm', onclick: () => {
+    paused = !paused;
+    pauseBtn.textContent = paused ? 'Resume' : 'Pause';
+  } }, 'Pause');
+
+  const matches = l => {
+    const q = filter.value.trim().toLowerCase();
+    return !q || `${l.method} ${l.path} ${l.statusCode} ${l.endpoint || ''}`.toLowerCase().includes(q);
+  };
+  const applyFilter = () => { for (const tr of body.querySelectorAll('tr.log-row')) tr.hidden = !matches(tr._log); };
+  filter.addEventListener('input', applyFilter);
+
+  const addRow = (l, atTop) => {
+    if (seen.has(l.id)) return;
+    seen.add(l.id);
+    const detail = el('tr', { class: 'log-detail', hidden: '' }, [el('td', { colspan: '8' }, '')]);
+    detail.hidden = true;
+    const row = el('tr', { class: 'log-row', onclick: async () => {
+      detail.hidden = !detail.hidden;
+      if (detail.hidden || detail.dataset.loaded) return;
+      detail.dataset.loaded = '1';
+      let full = l;
+      if (!l.request && !l.response && l.captured) {
+        try { full = await api(`/api/projects/${project.id}/logs/${l.id}`); } catch (e) { full = l; }
+      }
+      const cell = detail.firstChild;
+      cell.innerHTML = '';
+      const meta = [l.matchedRule && `rule: ${l.matchedRule}`, l.endpoint && `endpoint: ${l.endpoint}`, l.fault && `fault: ${l.fault}`,
+        ...(l.violations || [])].filter(Boolean).join('  ·  ');
+      if (meta) cell.appendChild(el('p', { class: 'muted' }, meta));
+      if (!full.request && !full.response) {
+        cell.appendChild(el('p', { class: 'muted' }, 'Bodies are not available: capture is off, or the entry is older than this server run.'));
+        return;
+      }
+      cell.appendChild(el('div', { class: 'log-split' }, [captureBlock('Request', full.request), captureBlock('Response', full.response)]));
+    } }, [
+      el('td', {}, new Date(l.timestamp).toLocaleTimeString()),
+      el('td', {}, l.method),
+      el('td', {}, l.path),
+      el('td', { class: statusClass(l.statusCode) }, String(l.statusCode)),
+      el('td', {}, String(l.durationMs)),
+      el('td', {}, l.source || ''),
+      el('td', l.violations && l.violations.length ? { title: l.violations.join('\n') } : {},
+        l.violations && l.violations.length ? `⚠ ${l.violations.length}` : ''),
+      el('td', {}, l.captured ? '▸' : ''),
+    ]);
+    row._log = l;
+    row.hidden = !matches(l);
+    if (atTop) { body.prepend(detail); body.prepend(row); } else { body.appendChild(row); body.appendChild(detail); }
+    while (body.children.length > 400) body.lastChild.remove();
+  };
+
+  const logs = await api(`/api/projects/${project.id}/logs`);
+  for (const l of logs) addRow(l, false);
+
+  panel.appendChild(el('div', { class: 'card' }, [
+    el('div', { class: 'flex-between' }, [
+      el('h3', {}, ['Requests ', status]),
+      el('div', { class: 'row-gap' }, [filter, pauseBtn]),
+    ]),
+    logInfo,
+    el('p', { class: 'muted' }, 'New requests appear here as they arrive. Click a row to see the captured request and response. Authorization, cookie and API-key headers are never stored.'),
+    el('table', {}, [
+      el('thead', {}, [el('tr', {}, ['Time', 'Method', 'Path', 'Status', 'ms', 'Source', 'Validation', ''].map(h => el('th', {}, h)))]),
+      body,
+    ]),
+  ]));
+
+  refreshStats();
+  const session = startLiveLogs(project.id, {
+    status: st => { status.textContent = st === 'live' ? '● live' : st; status.className = `live-status ${st}`; },
+    lag: n => { dropped += n; status.textContent = `● live (${dropped} missed)`; },
+    entry: l => {
+      if (!paused) addRow(l, true);
+      clearTimeout(session.statsTimer);
+      session.statsTimer = setTimeout(refreshStats, 800);
+    },
+  });
 }
 
 function tryItForm(projectId) {

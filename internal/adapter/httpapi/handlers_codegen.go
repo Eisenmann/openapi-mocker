@@ -36,7 +36,3 @@ func writeZip(w http.ResponseWriter, filename string, data []byte) {
 		return
 	}
 }
-
-func (a *api) listLogs(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, a.s.Logs.List(r.PathValue("id"), defaultLogLimit))
-}
