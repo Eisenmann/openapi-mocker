@@ -27,6 +27,7 @@ const (
 	StatusForbidden           = 403
 	StatusNotFound            = 404
 	StatusInternalServerError = 500
+	StatusServiceUnavailable  = 503
 )
 
 // LLM generation constants.

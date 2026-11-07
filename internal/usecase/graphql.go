@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -114,11 +115,13 @@ func (s *GraphQLServingService) Serve(
 	variables map[string]any,
 ) ([]byte, error) {
 	start := time.Now()
+	call := &gqlCall{start: start, request: graphQLRequestBody(query, operationName, variables), response: nil}
 
 	raw, err := s.getGraphQL(projectID)
 	if err != nil {
 		code := StatusFromError(err)
-		s.logResult(projectID, code, false, start)
+		call.response = errorBody(err.Error())
+		s.logResult(projectID, code, false, call)
 
 		return nil, err
 	}
@@ -127,18 +130,21 @@ func (s *GraphQLServingService) Serve(
 	if err != nil {
 		var qe *GraphQLQueryError
 		if errors.As(err, &qe) {
-			s.logResult(projectID, StatusOK, false, start)
+			call.response = graphQLErrorsBody(qe)
+			s.logResult(projectID, StatusOK, false, call)
 			// Execute always returns a nil body alongside *GraphQLQueryError;
 			// the handler serializes qe.Errors itself.
 			return nil, err
 		}
 
-		s.logResult(projectID, StatusInternalServerError, false, start)
+		call.response = errorBody(err.Error())
+		s.logResult(projectID, StatusInternalServerError, false, call)
 
 		return nil, err
 	}
 
-	s.logResult(projectID, StatusOK, true, start)
+	call.response = body
+	s.logResult(projectID, StatusOK, true, call)
 
 	return body, nil
 }
@@ -176,10 +182,48 @@ func (s *GraphQLServingService) getGraphQL(projectID string) (string, error) {
 	return c.Raw, nil
 }
 
-// logResult records a request log entry. durationMs is the wall-clock time
-// spent serving the GraphQL operation (unlike the plain OpenAPI mock path,
-// which the usecase layer measures separately in finish).
-func (s *GraphQLServingService) logResult(projectID string, statusCode int, matched bool, start time.Time) {
+// gqlCall is what logResult needs to know about a served GraphQL operation.
+type gqlCall struct {
+	start    time.Time
+	request  []byte
+	response []byte
+}
+
+// graphQLRequestBody rebuilds the JSON body of the operation for the log.
+func graphQLRequestBody(query, operationName string, variables map[string]any) []byte {
+	b, err := json.Marshal(graphQLRequest{Query: query, OperationName: operationName, Variables: variables})
+	if err != nil {
+		return []byte(query)
+	}
+
+	return b
+}
+
+// graphQLRequest is the JSON body of a GraphQL-over-HTTP request.
+type graphQLRequest struct {
+	Query         string         `json:"query"`
+	OperationName string         `json:"operationName"`
+	Variables     map[string]any `json:"variables"`
+}
+
+// graphQLErrorsBody renders the {"errors": [...]} body of a failed document.
+func graphQLErrorsBody(qe *GraphQLQueryError) []byte {
+	b, err := json.Marshal(map[string]any{"errors": qe.Errors})
+	if err != nil {
+		return nil
+	}
+
+	return b
+}
+
+// logResult records a request log entry. The duration is the wall-clock time
+// spent serving the GraphQL operation.
+func (s *GraphQLServingService) logResult(projectID string, statusCode int, matched bool, call *gqlCall) {
+	endpoint := ""
+	if matched {
+		endpoint = graphQLEndpoint
+	}
+
 	s.logs.Add(&domain.RequestLog{
 		ID:          "",
 		ProjectID:   projectID,
@@ -189,6 +233,10 @@ func (s *GraphQLServingService) logResult(projectID string, statusCode int, matc
 		MatchedRule: "",
 		Matched:     matched,
 		Timestamp:   time.Now().UTC(),
-		DurationMs:  time.Since(start).Milliseconds(),
+		DurationMs:  time.Since(call.start).Milliseconds(),
+		Violations:  nil, Fault: "", Source: "",
+		Endpoint: endpoint, Captured: false,
+		Request:  rawCapture(nil, call.request),
+		Response: rawCapture(jsonHeader(), call.response),
 	})
 }

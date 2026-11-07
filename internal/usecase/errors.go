@@ -34,8 +34,10 @@ var (
 // layers from drifting when new sentinel errors are added.
 func StatusFromError(err error) int {
 	switch {
-	case errors.Is(err, domain.ErrNotFound):
+	case errors.Is(err, domain.ErrNotFound), errors.Is(err, ErrLogNotFound), errors.Is(err, ErrObservabilityOff):
 		return StatusNotFound
+	case errors.Is(err, ErrTooManyStreams), errors.Is(err, ErrStreamsClosed):
+		return StatusServiceUnavailable
 	case errors.Is(err, ErrUnauthenticated):
 		return StatusUnauthorized
 	case errors.Is(err, ErrForbidden):

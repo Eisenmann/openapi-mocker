@@ -17,6 +17,7 @@ var (
 	errInvalidJSON               = errors.New("invalid JSON body")
 	errInvalidSince              = errors.New("since must be an RFC 3339 time")
 	errAccessNotEnabled          = errors.New("access control not enabled")
+	errMetricsToken              = errors.New("a valid metrics token is required")
 	errInvalidLimit              = errors.New("limit must be a positive integer")
 	errMCPNotEnabled             = errors.New("MCP serving not enabled")
 )

@@ -71,6 +71,7 @@ func NewRouter(s *Services) http.Handler {
 
 	// --- request logs and contract drift ---.
 	a.registerDiagnosticsRoutes(mux)
+	a.registerObservabilityRoutes(mux)
 
 	// --- dynamic mock server ---.
 	a.registerMockServerRoutes(mux)
