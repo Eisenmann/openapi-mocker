@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/Eisenmann/openapi-mocker/internal/domain"
@@ -29,6 +30,7 @@ func (a *api) createMock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	setAuditNote(r, fmt.Sprintf("%s %s -> %d", created.Method, created.Path, created.StatusCode))
 	writeJSON(w, http.StatusCreated, created)
 }
 
@@ -55,6 +57,7 @@ func (a *api) updateMock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	setAuditNote(r, fmt.Sprintf("%s %s -> %d", m.Method, m.Path, m.StatusCode))
 	writeJSON(w, http.StatusOK, m)
 }
 

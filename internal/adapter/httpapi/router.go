@@ -67,6 +67,7 @@ func NewRouter(s *Services) http.Handler {
 	// --- import / export ---.
 	a.registerExchangeRoutes(mux)
 	a.registerAuthRoutes(mux)
+	a.registerAccessRoutes(mux)
 
 	// --- request logs and contract drift ---.
 	a.registerDiagnosticsRoutes(mux)
@@ -78,7 +79,7 @@ func NewRouter(s *Services) http.Handler {
 	fileServer := http.FileServer(http.FS(webui.FS()))
 	mux.Handle("/", spaFallback(fileServer))
 
-	return withCORS(mux)
+	return withCORS(a.withAccess(mux, mux))
 }
 
 // registerMockServerRoutes registers the dynamic mock endpoints (REST,

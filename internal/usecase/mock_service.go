@@ -61,6 +61,15 @@ func (s *MockService) Update(m *domain.MockRule) error {
 		m.Scenario = ScenarioDefault
 	}
 
+	// A mock never moves to another project: the request body may not name
+	// one, and access control relies on the stored project.
+	existing, err := s.mocks.GetMock(m.ID)
+	if err != nil {
+		return err
+	}
+
+	m.ProjectID = existing.ProjectID
+
 	return s.mocks.UpdateMock(m)
 }
 

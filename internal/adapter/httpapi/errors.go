@@ -15,6 +15,8 @@ var (
 	errQueryRequired             = errors.New("query is required")
 	errCodeGenAgentNotConfigured = errors.New("code generation agent is not configured")
 	errInvalidJSON               = errors.New("invalid JSON body")
+	errInvalidSince              = errors.New("since must be an RFC 3339 time")
+	errAccessNotEnabled          = errors.New("access control not enabled")
 	errInvalidLimit              = errors.New("limit must be a positive integer")
 	errMCPNotEnabled             = errors.New("MCP serving not enabled")
 )

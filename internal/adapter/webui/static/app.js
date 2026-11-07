@@ -21,14 +21,63 @@ const el = (tag, attrs = {}, children = []) => {
   return e;
 };
 
+// API tokens (projects that have tokens require one) are kept per project in
+// this browser only.
+const TOKENS_KEY = 'omApiTokens';
+
+function readTokens() {
+  try { return JSON.parse(localStorage.getItem(TOKENS_KEY) || '{}'); } catch (_) { return {}; }
+}
+
+function setProjectToken(projectId, token) {
+  try {
+    const all = readTokens();
+    if (token) all[projectId] = token; else delete all[projectId];
+    localStorage.setItem(TOKENS_KEY, JSON.stringify(all));
+  } catch (_) { /* storage may be unavailable */ }
+}
+
+function projectIdOf(path) {
+  const m = /^\/api\/projects\/([^/?]+)/.exec(path);
+  return m ? m[1] : null;
+}
+
+function authHeaders(path) {
+  const id = projectIdOf(path);
+  const token = id ? readTokens()[id] : null;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+// Parallel requests that all hit a 401 share one prompt.
+const tokenPrompts = {};
+
+function askForToken(projectId) {
+  if (!tokenPrompts[projectId]) {
+    tokenPrompts[projectId] = Promise.resolve().then(() => {
+      const token = window.prompt('This project requires an API token. Paste it here:');
+      if (!token || !token.trim()) return false;
+      setProjectToken(projectId, token.trim());
+      return true;
+    }).finally(() => { delete tokenPrompts[projectId]; });
+  }
+  return tokenPrompts[projectId];
+}
+
 async function api(path, opts = {}) {
+  const { retried, ...fetchOpts } = opts;
+  const sent = authHeaders(path).Authorization;
   const resp = await fetch(path, {
-    headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
-    ...opts,
+    ...fetchOpts,
+    headers: { 'Content-Type': 'application/json', ...authHeaders(path), ...(opts.headers || {}) },
   });
   const text = await resp.text();
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch (_) { data = text; }
+  if (resp.status === 401 && !retried && projectIdOf(path)) {
+    // Another request may have got a token while this one was in flight.
+    const changed = authHeaders(path).Authorization !== sent;
+    if (changed || await askForToken(projectIdOf(path))) return api(path, { ...opts, retried: true });
+  }
   if (!resp.ok) {
     const msg = (data && data.error) ? data.error : `Error ${resp.status}`;
     throw new Error(msg);
@@ -127,14 +176,140 @@ const EXPORTS = [
   ['Swagger 2', 'contract/export?format=swagger2&as=yaml'],
 ];
 
+async function downloadExport(project, path, label) {
+  try {
+    const url = `/api/projects/${project.id}/${path}`;
+    const resp = await fetch(url, { headers: authHeaders(url) });
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      throw new Error(data.error || `Export failed (${resp.status})`);
+    }
+    const disposition = resp.headers.get('Content-Disposition') || '';
+    const named = /filename="?([^";]+)"?/.exec(disposition);
+    const link = el('a', { href: URL.createObjectURL(await resp.blob()), download: named ? named[1] : `${project.name}-${label}` });
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  } catch (err) { toast(err.message, 'error'); }
+}
+
 function exportControl(project) {
   return el('details', { class: 'export-menu', style: 'margin-bottom:12px;' }, [
     el('summary', { style: 'cursor:pointer;' }, 'Export'),
     el('div', { class: 'row', style: 'gap:8px;flex-wrap:wrap;margin-top:8px;' },
-      EXPORTS.map(([label, path]) => el('a', {
-        class: 'btn btn-secondary btn-sm', style: 'text-decoration:none;white-space:nowrap;', href: `/api/projects/${project.id}/${path}`, download: '',
+      EXPORTS.map(([label, path]) => el('button', {
+        class: 'btn btn-secondary btn-sm', style: 'white-space:nowrap;', onclick: () => downloadExport(project, path, label),
       }, label))),
   ]);
+}
+
+// ---------------- Access control and audit ----------------
+
+const ROLES = ['viewer', 'editor', 'admin'];
+
+function when(iso) { return iso ? new Date(iso).toLocaleString() : '-'; }
+
+function accessControl(project) {
+  const base = `/api/projects/${project.id}`;
+  const status = el('p', { class: 'muted', style: 'margin:4px 0;' });
+  const secretBox = el('div');
+  const tokenList = el('div');
+  const linkList = el('div');
+  const auditList = el('div');
+  const tokenName = el('input', { type: 'text', placeholder: 'Token name (e.g. ci)', style: 'max-width:200px;' });
+  const tokenRole = el('select', {}, ROLES.map(r => el('option', { value: r }, r)));
+  const tokenTtl = el('input', { type: 'number', min: '0', placeholder: 'Expires in days (0 = never)', style: 'max-width:200px;' });
+  const linkLabel = el('input', { type: 'text', placeholder: 'Share link label', style: 'max-width:200px;' });
+  const linkTtl = el('input', { type: 'number', min: '0', placeholder: 'Expires in days (0 = never)', style: 'max-width:200px;' });
+
+  const showSecret = (title, value, hint, onUse) => {
+    secretBox.innerHTML = '';
+    secretBox.appendChild(el('div', { class: 'card', style: 'padding:8px;margin:8px 0;' }, [
+      el('strong', {}, title), el('p', { class: 'muted', style: 'margin:4px 0;' }, hint),
+      el('code', { style: 'word-break:break-all;user-select:all;' }, value),
+      ...(onUse ? [el('div', { style: 'margin-top:6px;' }, el('button', { class: 'btn btn-secondary btn-sm', onclick: onUse }, 'Use this token in the UI'))] : []),
+    ]));
+  };
+
+  const row = (cells, action) => el('div', { class: 'row', style: 'gap:12px;align-items:center;padding:3px 0;flex-wrap:wrap;' },
+    [...cells.map(c => el('span', {}, c)), ...(action ? [action] : [])]);
+
+  async function refresh() {
+    try {
+      const who = await api(`${base}/access/whoami`);
+      status.textContent = `You are ${who.actor.name} (${who.role}${who.share ? ', read-only share link' : ''}). `
+        + (who.locked ? 'This project requires an API token.' : 'No tokens yet: the project is open to everyone.');
+    } catch (err) { status.textContent = err.message; return; }
+    try {
+      const t = await api(`${base}/access/tokens`);
+      tokenList.innerHTML = '';
+      for (const k of t.tokens) {
+        tokenList.appendChild(row([k.name, k.role, k.prefix + '...', `expires ${when(k.expiresAt)}`, `used ${when(k.lastUsedAt)}`,
+          k.revoked ? 'revoked' : (k.expired ? 'expired' : '')],
+        k.revoked ? null : el('button', { class: 'btn btn-danger btn-sm', onclick: () => revoke(`tokens/${k.id}`) }, 'Revoke')));
+      }
+      const l = await api(`${base}/access/share-links`);
+      linkList.innerHTML = '';
+      for (const k of l.links) {
+        linkList.appendChild(row([k.label, k.prefix + '...', `expires ${when(k.expiresAt)}`, k.revoked ? 'revoked' : (k.expired ? 'expired' : '')],
+          k.revoked ? null : el('button', { class: 'btn btn-danger btn-sm', onclick: () => revoke(`share-links/${k.id}`) }, 'Revoke')));
+      }
+      const a = await api(`${base}/audit?limit=50`);
+      auditList.innerHTML = '';
+      for (const e of a) {
+        auditList.appendChild(row([when(e.time), e.actor.name, e.action, [e.targetType, e.targetId].filter(Boolean).join(' '), e.note || '', `HTTP ${e.status}`]));
+      }
+      if (!a.length) auditList.appendChild(el('p', { class: 'muted' }, 'No changes recorded yet.'));
+    } catch (err) {
+      tokenList.textContent = `${err.message} (managing access needs the admin role)`;
+    }
+  }
+
+  async function revoke(path) {
+    try { await api(`${base}/access/${path}`, { method: 'DELETE' }); await refresh(); } catch (err) { toast(err.message, 'error'); }
+  }
+
+  async function createToken() {
+    try {
+      const res = await api(`${base}/access/tokens`, { method: 'POST', body: JSON.stringify({
+        name: tokenName.value, role: tokenRole.value, ttlDays: Number(tokenTtl.value || 0) }) });
+      showSecret(`Token "${res.info.name}" (${res.info.role})`, res.token, 'Copy it now: it is shown only once.',
+        () => { setProjectToken(project.id, res.token); toast('Token saved in this browser'); refresh(); });
+      tokenName.value = '';
+      await refresh();
+    } catch (err) { toast(err.message, 'error'); }
+  }
+
+  async function createLink() {
+    try {
+      const res = await api(`${base}/access/share-links`, { method: 'POST', body: JSON.stringify({
+        label: linkLabel.value, ttlDays: Number(linkTtl.value || 0) }) });
+      showSecret(`Share link "${res.info.label}" (read-only)`, `${location.origin}${res.url}`, 'Anyone with this URL can read the contract and mocks. Shown only once.');
+      linkLabel.value = '';
+      await refresh();
+    } catch (err) { toast(err.message, 'error'); }
+  }
+
+  const box = el('details', { class: 'access-control', style: 'margin-bottom:12px;' }, [
+    el('summary', { style: 'cursor:pointer;' }, 'Access and audit'),
+    el('div', { style: 'margin-top:8px;' }, [
+      status, secretBox,
+      el('h4', { style: 'margin:8px 0 4px;' }, 'API tokens'),
+      el('p', { class: 'muted', style: 'margin:0 0 4px;' }, 'The first token must be an admin token and turns the project from open to token-only.'),
+      tokenList,
+      el('div', { class: 'row', style: 'gap:8px;flex-wrap:wrap;margin-top:6px;' }, [tokenName, tokenRole, tokenTtl,
+        el('button', { class: 'btn btn-primary btn-sm', onclick: createToken }, 'Create token')]),
+      el('h4', { style: 'margin:12px 0 4px;' }, 'Read-only share links'),
+      linkList,
+      el('div', { class: 'row', style: 'gap:8px;flex-wrap:wrap;margin-top:6px;' }, [linkLabel, linkTtl,
+        el('button', { class: 'btn btn-primary btn-sm', onclick: createLink }, 'Create share link')]),
+      el('h4', { style: 'margin:12px 0 4px;' }, 'Audit log'),
+      auditList,
+      el('button', { class: 'btn btn-secondary btn-sm', style: 'margin-top:6px;', onclick: refresh }, 'Refresh'),
+    ]),
+  ]);
+  box.addEventListener('toggle', () => { if (box.open) refresh(); });
+  return box;
 }
 
 // ---------------- Modal helpers ----------------
@@ -202,6 +377,7 @@ function renderContent() {
   content.lastChild.appendChild(el('code', {}, `${location.origin}/mock/${project.id}/...`));
   content.appendChild(exportControl(project));
   content.appendChild(authControl(project));
+  content.appendChild(accessControl(project));
   content.appendChild(validationModeControl(project));
   content.appendChild(stateModeControl(project));
 

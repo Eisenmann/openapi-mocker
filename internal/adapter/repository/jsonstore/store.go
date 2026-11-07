@@ -34,6 +34,7 @@ var (
 	_ usecase.ProviderRepository = (*Store)(nil)
 	_ usecase.LogRepository      = (*Store)(nil)
 	_ usecase.DriftRepository    = (*Store)(nil)
+	_ usecase.AccessRepository   = (*Store)(nil)
 )
 
 type data struct {
@@ -43,12 +44,18 @@ type data struct {
 	Providers map[string]*domain.LLMProvider `json:"providers"`
 	Logs      []*domain.RequestLog           `json:"logs"`
 	Drifts    []*domain.DriftReport          `json:"drifts"`
+	// Access control: API tokens, share links and the audit log.
+	Tokens     []domain.AccessToken `json:"tokens"`
+	ShareLinks []domain.ShareLink   `json:"shareLinks"`
+	Audit      []domain.AuditEntry  `json:"audit"`
 }
 
 type Store struct {
 	mu   sync.RWMutex
 	path string
 	d    data
+	// auditCap bounds the audit entries kept per project.
+	auditCap int
 }
 
 func New(dir string) (*Store, error) {
@@ -58,7 +65,8 @@ func New(dir string) (*Store, error) {
 	}
 
 	s := &Store{
-		path: filepath.Join(dir, "db.json"),
+		auditCap: maxAuditPerProject,
+		path:     filepath.Join(dir, "db.json"),
 		d: data{
 			Projects:  map[string]*domain.Project{},
 			Contracts: map[string][]*domain.Contract{},
@@ -66,6 +74,10 @@ func New(dir string) (*Store, error) {
 			Providers: map[string]*domain.LLMProvider{},
 			Logs:      []*domain.RequestLog{},
 			Drifts:    []*domain.DriftReport{},
+
+			Tokens:     []domain.AccessToken{},
+			ShareLinks: []domain.ShareLink{},
+			Audit:      []domain.AuditEntry{},
 		},
 	}
 	err = s.load()
@@ -227,6 +239,7 @@ func (s *Store) Delete(id string) error {
 	}
 
 	s.d.Drifts = dropDrifts(s.d.Drifts, id)
+	s.dropAccess(id)
 
 	return s.save()
 }

@@ -8,7 +8,21 @@ import (
 )
 
 func (a *api) listProjects(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, a.s.Projects.List())
+	projects := a.s.Projects.List()
+
+	// The mock credentials of a project that requires a token are not for
+	// everybody who can list projects.
+	if a.s.Access != nil {
+		for i, p := range projects {
+			if p.Auth != nil && a.s.Access.Locked(p.ID) {
+				c := *p
+				c.Auth = nil
+				projects[i] = &c
+			}
+		}
+	}
+
+	writeJSON(w, http.StatusOK, projects)
 }
 
 func (a *api) createProject(w http.ResponseWriter, r *http.Request) {
@@ -36,7 +50,21 @@ func (a *api) getProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, p)
+	writeJSON(w, http.StatusOK, a.visibleProject(r, p))
+}
+
+// visibleProject hides the mock credentials from callers below the editor
+// role.
+func (a *api) visibleProject(r *http.Request, p *domain.Project) *domain.Project {
+	pr := principalOf(r)
+	if pr == nil || p.Auth == nil || pr.Role.Allows(domain.RoleEditor) {
+		return p
+	}
+
+	c := *p
+	c.Auth = nil
+
+	return &c
 }
 
 // updateProject changes project settings. Only the fields present in the
