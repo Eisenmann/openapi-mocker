@@ -13,7 +13,7 @@ import (
 // in "METHOD /path/{param}" form. The router knows nothing about how the
 // services in Services are implemented — it only calls their methods.
 func NewRouter(s *Services) http.Handler {
-	a := &api{s: *s}
+	a := &api{s: *s, sessions: newMCPSessions()}
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -87,9 +87,12 @@ func NewRouter(s *Services) http.Handler {
 func (a *api) registerMockServerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /mock/{projectId}/graphql", a.serveGraphQL)
 	mux.HandleFunc("POST /mock/{projectId}/mcp", a.serveMCP)
+	mux.HandleFunc("GET /mock/{projectId}/mcp", a.serveMCPStream)
+	mux.HandleFunc("DELETE /mock/{projectId}/mcp", a.endMCPSession)
 	mux.HandleFunc("GET /api/projects/{id}/graphql/schema", a.graphQLSchema)
 	mux.HandleFunc("GET /api/projects/{id}/graphql/operations", a.graphQLOperations)
 	mux.HandleFunc("GET /api/projects/{id}/mcp/tools", a.mcpTools)
+	mux.HandleFunc("GET /api/projects/{id}/mcp/catalog", a.mcpCatalog)
 	mux.HandleFunc("/mock/{projectId}/{path...}", a.serveMock)
 	mux.HandleFunc("/mock/{projectId}", a.serveMockRoot)
 }
@@ -109,7 +112,9 @@ func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Mock-Scenario")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Mock-Scenario, Accept, "+
+			"Mcp-Session-Id, MCP-Protocol-Version, Last-Event-ID, X-Mock-Stream")
+		w.Header().Set("Access-Control-Expose-Headers", "Mcp-Session-Id")
 
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

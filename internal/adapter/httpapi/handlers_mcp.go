@@ -33,7 +33,14 @@ func (a *api) serveMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := a.s.MCPServing.Handle(r.PathValue("projectId"), body, r.Header.Get("X-Mock-Scenario"))
+	project := r.PathValue("projectId")
+	initialize := rpcMethod(body) == methodInitialize
+
+	if _, ok := a.checkTransport(w, r, initialize); !ok {
+		return
+	}
+
+	result, err := a.s.MCPServing.Handle(project, body, r.Header.Get("X-Mock-Scenario"))
 	if err != nil {
 		writeError(w, usecase.StatusFromError(err), err)
 		return
@@ -45,6 +52,16 @@ func (a *api) serveMCP(w http.ResponseWriter, r *http.Request) {
 
 	setValidationHeader(w, &result)
 
+	if initialize && result.Body != nil && hasResult(result.Body) {
+		w.Header().Set(headerMCPSession, a.sessions.start(project))
+	}
+
+	writeMCPBody(w, r, body, &result)
+}
+
+// writeMCPBody writes the JSON-RPC answer: nothing but 202 for a
+// notification, an event stream when the client wants one, JSON otherwise.
+func writeMCPBody(w http.ResponseWriter, r *http.Request, request []byte, result *usecase.MCPResponse) {
 	// JSON-RPC notifications must not receive a response body; the MCP
 	// Streamable HTTP transport requires 202 Accepted for them.
 	if result.Body == nil {
@@ -52,11 +69,16 @@ func (a *api) serveMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-
 	if result.Fault != "" {
 		w.Header().Set("X-Mock-Fault", result.Fault)
 	}
+
+	if result.Fault != usecase.FaultTruncated && wantsSSE(r) {
+		writeSSE(w, result.Status, request, result.Body)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
 
 	if result.Fault == usecase.FaultTruncated {
 		writeTruncated(w, result.Status, result.Body)
@@ -99,4 +121,21 @@ func (a *api) mcpTools(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"tools": tools})
+}
+
+// mcpCatalog describes everything the project MCP manifest exposes: tools,
+// resources, resource templates and prompts (for the web UI).
+func (a *api) mcpCatalog(w http.ResponseWriter, r *http.Request) {
+	if a.s.MCPServing == nil {
+		writeError(w, http.StatusNotFound, errMCPNotEnabled)
+		return
+	}
+
+	cat, err := a.s.MCPServing.Catalog(r.PathValue("id"))
+	if err != nil {
+		writeError(w, usecase.StatusFromError(err), err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, cat)
 }

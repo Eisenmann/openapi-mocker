@@ -20,18 +20,65 @@ var ErrNotMCPContract = fmt.Errorf("%w: project is not an MCP contract", ErrUnsu
 
 // MCPValidationResult contains the outcome of validating an MCP manifest.
 type MCPValidationResult struct {
-	Valid     bool     `json:"valid"`
-	Errors    []string `json:"errors,omitempty"`
-	ToolCount int      `json:"toolCount"`
+	Valid         bool     `json:"valid"`
+	Errors        []string `json:"errors,omitempty"`
+	ToolCount     int      `json:"toolCount"`
+	ResourceCount int      `json:"resourceCount,omitempty"`
+	PromptCount   int      `json:"promptCount,omitempty"`
 }
+
+// MCPSupportedProtocolVersions lists the MCP protocol revisions the mock
+// speaks, newest first. The engine negotiates against it and the HTTP
+// transport checks the MCP-Protocol-Version header against it.
+var MCPSupportedProtocolVersions = []string{"2025-06-18", "2025-03-26", "2024-11-05"}
 
 // MCPTool describes one tool exposed by the mock MCP server: its name,
 // description and JSON-Schema input schema (all are returned verbatim in
 // tools/list responses, per the MCP specification).
 type MCPTool struct {
 	Name        string          `json:"name"`
+	Title       string          `json:"title,omitempty"`
 	Description string          `json:"description"`
 	InputSchema json.RawMessage `json:"inputSchema"`
+	// OutputSchema is the optional JSON Schema of the structured result.
+	OutputSchema json.RawMessage `json:"outputSchema,omitempty"`
+	// Annotations are the optional behaviour hints (readOnlyHint, ...).
+	Annotations json.RawMessage `json:"annotations,omitempty"`
+}
+
+// MCPResource is a resource (or resource template, when URITemplate is set)
+// exposed by the mock MCP server. The content is never part of the listing.
+type MCPResource struct {
+	URI         string `json:"uri,omitempty"`
+	URITemplate string `json:"uriTemplate,omitempty"`
+	Name        string `json:"name"`
+	Title       string `json:"title,omitempty"`
+	Description string `json:"description,omitempty"`
+	MimeType    string `json:"mimeType,omitempty"`
+}
+
+// MCPPromptArgument is one argument of a prompt.
+type MCPPromptArgument struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Required    bool   `json:"required,omitempty"`
+}
+
+// MCPPrompt is a prompt exposed by the mock MCP server.
+type MCPPrompt struct {
+	Name        string              `json:"name"`
+	Title       string              `json:"title,omitempty"`
+	Description string              `json:"description,omitempty"`
+	Arguments   []MCPPromptArgument `json:"arguments,omitempty"`
+}
+
+// MCPCatalog is everything a manifest exposes: what tools/list,
+// resources/list, resources/templates/list and prompts/list return.
+type MCPCatalog struct {
+	Tools     []MCPTool     `json:"tools"`
+	Resources []MCPResource `json:"resources"`
+	Templates []MCPResource `json:"resourceTemplates"`
+	Prompts   []MCPPrompt   `json:"prompts"`
 }
 
 // MCPEngine is the port that the usecase layer depends on for all MCP work.
@@ -64,6 +111,9 @@ type MCPEngine interface {
 	Validate(raw []byte) MCPValidationResult
 	ParseAndValidate(raw []byte) error
 	ListTools(raw []byte) ([]MCPTool, error)
+	// Catalog describes the tools, resources, resource templates and prompts
+	// of the manifest.
+	Catalog(raw []byte) (MCPCatalog, error)
 	// ExecuteWith answers a JSON-RPC 2.0 request (or batch) against the
 	// manifest. opts.Scenario selects among the tool declared mock responses
 	// (empty string means "default") - the same X-Mock-Scenario concept as
@@ -219,6 +269,16 @@ func (s *MCPServingService) Tools(projectID string) ([]MCPTool, error) {
 	}
 
 	return s.engine.ListTools([]byte(raw))
+}
+
+// Catalog describes everything the project's MCP manifest exposes.
+func (s *MCPServingService) Catalog(projectID string) (MCPCatalog, error) {
+	raw, err := s.getMCP(projectID)
+	if err != nil {
+		return MCPCatalog{}, err
+	}
+
+	return s.engine.Catalog([]byte(raw))
 }
 
 func (s *MCPServingService) getMCP(projectID string) (string, error) {

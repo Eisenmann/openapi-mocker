@@ -14,6 +14,11 @@
 //
 // "openapi-mocker diff OLD NEW [--fail-on-breaking]" compares two contract
 // files and exits (see diff.go).
+//
+// "openapi-mocker mcp-stdio MANIFEST.json" serves an MCP manifest over the
+// MCP stdio transport for editors and agents (see mcpstdio.go).
+//
+// MCP_REQUIRE_SESSION=true makes the HTTP MCP endpoint demand Mcp-Session-Id.
 package main
 
 import (
@@ -44,6 +49,10 @@ import (
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "diff" {
 		os.Exit(runDiff(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
+	if len(os.Args) > 1 && os.Args[1] == "mcp-stdio" {
+		os.Exit(runMCPStdio(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
 	}
 
 	runServer()
@@ -100,20 +109,14 @@ func runServer() {
 		Logs:           usecase.NewLogService(store),
 		Drift:          usecase.NewDriftService(store),
 		CodeGenAgent:   codeGenAgent,
+
+		MCPRequireSession: os.Getenv("MCP_REQUIRE_SESSION") == "true",
 	}
 
 	// ---- Interface Adapter: HTTP controllers + routing ----.
 	handler := httpapi.NewRouter(&services)
 
-	httpServer := &http.Server{
-		Addr:              ":" + port,
-		Handler:           handler,
-		ReadHeaderTimeout: 10 * time.Second,
-		// WriteTimeout is deliberately long: LLM mock generation and requests
-		// with artificial delay (DelayMs) may take up to a minute.
-		WriteTimeout: 180 * time.Second,
-		IdleTimeout:  120 * time.Second,
-	}
+	httpServer := newHTTPServer(port, handler)
 
 	log.Printf("OpenAPI Mocker started on :%s (data: %s)", port, dataDir)
 	log.Printf("UI:  http://localhost:%s", port)
@@ -121,6 +124,19 @@ func runServer() {
 
 	if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
+	}
+}
+
+// newHTTPServer builds the HTTP server around the router.
+func newHTTPServer(port string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              ":" + port,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		// WriteTimeout is deliberately long: LLM mock generation and requests
+		// with artificial delay (DelayMs) may take up to a minute.
+		WriteTimeout: 180 * time.Second,
+		IdleTimeout:  120 * time.Second,
 	}
 }
 

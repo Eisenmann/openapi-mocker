@@ -158,7 +158,7 @@ func (s *ContractService) validateNormalized(raw string) ValidationResult {
 		return ValidationResult{
 			Valid:   res.Valid,
 			Errors:  res.Errors,
-			OpCount: res.ToolCount,
+			OpCount: res.ToolCount + res.ResourceCount + res.PromptCount,
 		}
 	default:
 		return s.engine.Validate([]byte(raw))

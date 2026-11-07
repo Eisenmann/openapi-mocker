@@ -501,6 +501,8 @@ type mockMCPEngine struct {
 	parseErr        error
 	listToolsResult []usecase.MCPTool
 	listToolsErr    error
+	catalog         usecase.MCPCatalog
+	catalogErr      error
 	executeBody     []byte
 	executeErr      error
 
@@ -534,6 +536,10 @@ func (m *mockMCPEngine) ParseAndValidate(raw []byte) error {
 
 func (m *mockMCPEngine) ListTools(raw []byte) ([]usecase.MCPTool, error) {
 	return m.listToolsResult, m.listToolsErr
+}
+
+func (m *mockMCPEngine) Catalog(raw []byte) (usecase.MCPCatalog, error) {
+	return m.catalog, m.catalogErr
 }
 
 // errSentinel is a generic error for tests.
