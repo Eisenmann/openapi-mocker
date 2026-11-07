@@ -24,7 +24,7 @@ func (s *ExchangeService) ExportBundle(projectID string, history bool) (*Bundle,
 	b := &Bundle{
 		Format: BundleFormat, Version: BundleVersion, ExportedAt: time.Now().UTC(),
 		Project: BundleProject{
-			Name: p.Name, Description: p.Description, ValidationMode: p.ValidationMode, StateMode: p.StateMode,
+			Name: p.Name, Description: p.Description, ValidationMode: p.ValidationMode, StateMode: p.StateMode, Auth: p.Auth,
 		},
 		Contracts: make([]BundleContract, 0, len(versions)),
 		Mocks:     []domain.MockRule{},
@@ -104,18 +104,9 @@ func (s *ExchangeService) checkBundleContracts(contracts []BundleContract) error
 }
 
 func (s *ExchangeService) applyBundle(p *domain.Project, b *Bundle, res *ImportResult) error {
-	if b.Project.ValidationMode != "" {
-		_, err := s.projects.SetValidationMode(p.ID, b.Project.ValidationMode)
-		if err != nil {
-			return fmt.Errorf("%w: %w", ErrInvalidImport, err)
-		}
-	}
-
-	if b.Project.StateMode != "" {
-		_, err := s.projects.SetStateMode(p.ID, b.Project.StateMode)
-		if err != nil {
-			return fmt.Errorf("%w: %w", ErrInvalidImport, err)
-		}
+	err := s.applySettings(p, &b.Project)
+	if err != nil {
+		return err
 	}
 
 	for _, c := range b.Contracts {
@@ -164,4 +155,30 @@ func (s *ExchangeService) ExportCollection(projectID, format, baseURL string) ([
 	return s.codec.ExportCollection(format, &ExportData{
 		Name: p.Name, BaseURL: baseURL, Endpoints: endpoints, Mocks: s.mocks.List(projectID),
 	})
+}
+
+// applySettings restores the project settings stored in a bundle.
+func (s *ExchangeService) applySettings(p *domain.Project, bp *BundleProject) error {
+	if bp.ValidationMode != "" {
+		_, err := s.projects.SetValidationMode(p.ID, bp.ValidationMode)
+		if err != nil {
+			return fmt.Errorf("%w: %w", ErrInvalidImport, err)
+		}
+	}
+
+	if bp.StateMode != "" {
+		_, err := s.projects.SetStateMode(p.ID, bp.StateMode)
+		if err != nil {
+			return fmt.Errorf("%w: %w", ErrInvalidImport, err)
+		}
+	}
+
+	if bp.Auth != nil {
+		_, err := s.projects.SetAuth(p.ID, bp.Auth)
+		if err != nil {
+			return fmt.Errorf("%w: %w", ErrInvalidImport, err)
+		}
+	}
+
+	return nil
 }

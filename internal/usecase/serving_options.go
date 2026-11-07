@@ -16,6 +16,7 @@ type servingConfig struct {
 	state    *StateService
 	upstream UpstreamClient
 	drifts   DriftRepository
+	auth     *AuthService
 }
 
 // WithProjects enables per-project request validation: the serving service
@@ -39,6 +40,12 @@ func WithUpstream(client UpstreamClient, drifts DriftRepository) ServingOption {
 		c.upstream = client
 		c.drifts = drifts
 	}
+}
+
+// WithAuth enables the auth simulation: the OAuth2 token endpoint and the
+// credential checks of projects whose auth mode is on.
+func WithAuth(auth *AuthService) ServingOption {
+	return func(c *servingConfig) { c.auth = auth }
 }
 
 func newServingConfig(opts []ServingOption) servingConfig {

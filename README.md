@@ -207,6 +207,38 @@ desktop, in Docker, and in Kubernetes.
      for an operation always wins over state, and operations that do not follow
      the conventions stay static. Query parameters (filters, paging) are not
      applied to lists.
+   - **Auth simulation.** The `Auth simulation` panel of a project (or
+     `GET/PUT/DELETE /api/projects/{id}/auth`) lets clients test their 401 and
+     403 paths without an identity provider. Modes: `off` (default),
+     `contract` (enforce the security requirements the contract declares per
+     operation or globally: API key in header / query / cookie, HTTP bearer
+     and basic, OAuth2 and OpenID Connect with required scopes; operations
+     with `security: []` stay public) and `all` (every request needs a bearer
+     token, basic credentials or an API key in `apiKeyHeader` /
+     `?api_key=`). Missing credentials give `401` with a `WWW-Authenticate`
+     challenge, unknown ones `401 invalid_token`, missing scopes
+     `403 insufficient_scope`. Configure fixed `credentials` (tokens and API
+     keys), `users` (basic auth and the password grant) and OAuth2 `clients`.
+     Each can carry a **scenario** that decides what its holder gets: `expired`
+     and `revoked` answer 401, `forbidden` and `insufficient_scope` answer 403.
+     A client's scenario applies to the tokens it is issued. An empty `scopes`
+     list means every scope; with no users or clients configured, any
+     credentials are accepted. The **token endpoint** is
+     `POST /mock/{projectId}<tokenPath>` (default `/oauth/token`) with the
+     `client_credentials`, `password`, `authorization_code` (any code works,
+     except `invalid`, `expired` and `used`) and `refresh_token` grants, form
+     or JSON body, client credentials in the body or a Basic header. Issued
+     tokens last `tokenTtlSeconds` (default 3600), then answer 401 as expired.
+     Refresh tokens work once. Issued tokens live in memory and are lost on
+     restart; the configured credentials are stored with the project and
+     travel in bundles. Rejections show in the request log with source `auth`.
+     GraphQL (`POST /mock/{projectId}/graphql`) and MCP
+     (`POST /mock/{projectId}/mcp`) endpoints are guarded too. Their contracts
+     carry no security requirements, so in either enabled mode the whole
+     endpoint needs a bearer token, basic credentials or an API key, and the
+     same scenarios apply (401 with `WWW-Authenticate`, 403). Per-operation
+     scopes are not checked there. The token endpoint is served for these
+     projects as well.
    - **Import and export.** `Import…` in the sidebar (or `POST /api/import`,
      the file as the request body or a multipart `file` field, optional
      `?name=`, up to 32 MB) creates a new project from:
@@ -300,6 +332,8 @@ kubectl -n openapi-mocker port-forward svc/openapi-mocker 8080:80
 | `GET /api/projects/{id}/codegen/server` | download Go server zip |
 | `GET /api/projects/{id}/codegen/client` | download Go client zip |
 | `GET /api/projects/{id}/logs` | recent mock requests |
+| `GET/PUT/DELETE /api/projects/{id}/auth` | read, replace or remove the auth simulation settings |
+| `POST /mock/{projectId}/oauth/token` | simulated OAuth2 token endpoint (path configurable) |
 | `POST /api/import` | create a project from a Postman / Insomnia / HAR / OpenAPI / Swagger file or a bundle |
 | `GET /api/projects/{id}/export` | download a bundle, Postman or Insomnia collection (`format`, `history`) |
 | `GET /api/projects/{id}/contract/export` | contract as OpenAPI 3.0 / 3.1 or Swagger 2 (`format`, `as`) |

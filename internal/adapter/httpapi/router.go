@@ -66,6 +66,7 @@ func NewRouter(s *Services) http.Handler {
 
 	// --- import / export ---.
 	a.registerExchangeRoutes(mux)
+	a.registerAuthRoutes(mux)
 
 	// --- request logs and contract drift ---.
 	a.registerDiagnosticsRoutes(mux)

@@ -80,6 +80,7 @@ func runServer() {
 	stateService := usecase.NewStateService(stateStore, store, contractEngine)
 	contractService := newContractService(store, contractEngine, llmGateway, validators)
 	projectService := usecase.NewProjectService(store)
+	authService := usecase.NewAuthService(store, contractEngine, usecase.WithAuthLogs(store))
 	mockService := usecase.NewMockService(store, store, store, contractEngine, llmGateway)
 	services := httpapi.Services{
 		Projects:  projectService,
@@ -89,11 +90,12 @@ func runServer() {
 		Providers: usecase.NewProviderService(store, llmGateway),
 		MockServing: usecase.NewMockServingService(
 			store, store, store, contractEngine, usecase.WithProjects(store), usecase.WithState(stateService),
-			usecase.WithUpstream(upstream.New(0), store),
+			usecase.WithUpstream(upstream.New(0), store), usecase.WithAuth(authService),
 		),
 		GraphQLServing: usecase.NewGraphQLServingService(store, store, graphQLEngine),
 		MCPServing:     usecase.NewMCPServingService(store, store, mcpEngine, usecase.WithProjects(store)),
 		State:          stateService,
+		Auth:           authService,
 		Codegen:        usecase.NewCodegenService(store, codeGenerator),
 		Logs:           usecase.NewLogService(store),
 		Drift:          usecase.NewDriftService(store),

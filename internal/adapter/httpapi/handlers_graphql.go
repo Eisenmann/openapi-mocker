@@ -16,6 +16,10 @@ func (a *api) serveGraphQL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if a.guardEndpoint(w, r) {
+		return
+	}
+
 	projectID := r.PathValue("projectId")
 
 	var body struct {

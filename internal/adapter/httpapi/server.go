@@ -35,6 +35,7 @@ type Services struct {
 	GraphQLServing *usecase.GraphQLServingService
 	MCPServing     *usecase.MCPServingService
 	State          *usecase.StateService
+	Auth           *usecase.AuthService
 	Codegen        *usecase.CodegenService
 	Logs           *usecase.LogService
 	Drift          *usecase.DriftService

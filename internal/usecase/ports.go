@@ -26,6 +26,8 @@ type ProjectRepository interface {
 	SetStateMode(id string, mode domain.StateMode) (*domain.Project, error)
 	// SetProxy updates the upstream, proxy mode and drift check of the project.
 	SetProxy(id string, cfg domain.ProxyConfig) (*domain.Project, error)
+	// SetAuth replaces the project's auth simulation (nil switches it off).
+	SetAuth(id string, cfg *domain.AuthConfig) (*domain.Project, error)
 	// Delete removes the project and cascades deletion of all its contracts/mocks.
 	// This is a referential-integrity concern of the store, not a usecase business rule.
 	Delete(id string) error
