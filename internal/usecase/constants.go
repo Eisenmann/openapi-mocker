@@ -27,6 +27,8 @@ const (
 	StatusForbidden           = 403
 	StatusNotFound            = 404
 	StatusInternalServerError = 500
+	StatusSwitchingProtocols  = 101
+	StatusUpgradeRequired     = 426
 	StatusServiceUnavailable  = 503
 )
 

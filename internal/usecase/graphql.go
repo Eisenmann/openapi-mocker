@@ -89,6 +89,13 @@ type GraphQLEngine interface {
 	Execute(raw []byte, query, operationName string, variables map[string]any) ([]byte, error)
 }
 
+// GraphQLOperationTyper is an optional capability of a GraphQLEngine: it
+// parses a query document and returns the type ("query", "mutation" or
+// "subscription") of the selected operation.
+type GraphQLOperationTyper interface {
+	OperationType(query, operationName string) (string, error)
+}
+
 // GraphQLServingService serves mock responses for GraphQL contracts. Like
 // MockServingService for OpenAPI, it decides "what to respond" (per the
 // schema + query), not "how to write it to the socket".
@@ -147,6 +154,20 @@ func (s *GraphQLServingService) Serve(
 	s.logResult(projectID, StatusOK, true, call)
 
 	return body, nil
+}
+
+// IsSubscription reports whether the operation selected in the document is a
+// subscription. A document that does not parse is not one: executing it
+// reports the real error.
+func (s *GraphQLServingService) IsSubscription(query, operationName string) bool {
+	typer, ok := s.engine.(GraphQLOperationTyper)
+	if !ok {
+		return false
+	}
+
+	kind, err := typer.OperationType(query, operationName)
+
+	return err == nil && kind == "subscription"
 }
 
 // Schema returns the introspected SDL of the project's GraphQL schema.

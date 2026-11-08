@@ -55,6 +55,39 @@ func (a *api) handleMock(w http.ResponseWriter, r *http.Request, path string) {
 		return
 	}
 
+	setMockHeaders(w, &resp)
+
+	if resp.Fault == usecase.FaultTruncated {
+		writeTruncated(w, resp.StatusCode, resp.Body)
+
+		return
+	}
+
+	if resp.WebSocket != nil {
+		serveWebSocket(w, r, resp.WebSocket)
+
+		return
+	}
+
+	if resp.Stream != nil {
+		serveEventStream(w, r, &resp)
+
+		return
+	}
+
+	w.WriteHeader(resp.StatusCode)
+
+	_, err = w.Write(resp.Body)
+	if err != nil {
+		http.Error(w, "failed to write response", http.StatusInternalServerError)
+
+		return
+	}
+}
+
+// setMockHeaders copies the headers of a mock response, plus the ones that
+// say where it came from.
+func setMockHeaders(w http.ResponseWriter, resp *usecase.MockResponse) {
 	for k, v := range resp.Headers {
 		w.Header().Set(k, v)
 	}
@@ -69,21 +102,6 @@ func (a *api) handleMock(w http.ResponseWriter, r *http.Request, path string) {
 
 	if resp.Fault != "" {
 		w.Header().Set("X-Mock-Fault", resp.Fault)
-	}
-
-	if resp.Fault == usecase.FaultTruncated {
-		writeTruncated(w, resp.StatusCode, resp.Body)
-
-		return
-	}
-
-	w.WriteHeader(resp.StatusCode)
-
-	_, err = w.Write(resp.Body)
-	if err != nil {
-		http.Error(w, "failed to write response", http.StatusInternalServerError)
-
-		return
 	}
 }
 

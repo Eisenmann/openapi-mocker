@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -16,6 +17,7 @@ type MockService struct {
 	providers ProviderRepository
 	engine    ContractEngine
 	llm       LLMGateway
+	grpc      GRPCMethodLookup
 }
 
 func NewMockService(
@@ -34,12 +36,41 @@ func NewMockService(
 	}
 }
 
+// WithGRPCMethods lets the service check rules of gRPC methods when they are
+// saved (for example that a stream script sits on a streaming method).
+func (s *MockService) WithGRPCMethods(l GRPCMethodLookup) *MockService {
+	s.grpc = l
+
+	return s
+}
+
+// checkGRPCRule rejects a stream script on a method that does not stream
+// responses: such a rule could only fail when the method is called.
+func (s *MockService) checkGRPCRule(m *domain.MockRule) error {
+	if s.grpc == nil || m.Stream == nil || m.Method != http.MethodPost {
+		return nil
+	}
+
+	serverStreaming, known := s.grpc.MethodShape(m.ProjectID, m.Path)
+	if known && !serverStreaming {
+		return fmt.Errorf("%w: %s is a unary or client-streaming method; a stream script needs a "+
+			"server-streaming or bidirectional method", ErrInvalidStream, m.Path)
+	}
+
+	return nil
+}
+
 func (s *MockService) List(projectID string) []*domain.MockRule {
 	return s.mocks.ListMocks(projectID)
 }
 
 func (s *MockService) Create(m *domain.MockRule) (*domain.MockRule, error) {
 	err := validateRule(m)
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.checkGRPCRule(m)
 	if err != nil {
 		return nil, err
 	}
@@ -70,6 +101,11 @@ func (s *MockService) Update(m *domain.MockRule) error {
 
 	m.ProjectID = existing.ProjectID
 
+	err = s.checkGRPCRule(m)
+	if err != nil {
+		return err
+	}
+
 	return s.mocks.UpdateMock(m)
 }
 
@@ -94,7 +130,12 @@ func validateRule(m *domain.MockRule) error {
 		return fmt.Errorf("%w: %w", ErrInvalidFault, err)
 	}
 
-	return nil
+	err = validateStream(m.Stream)
+	if err != nil {
+		return err
+	}
+
+	return validateWebSocket(m.WebSocket)
 }
 
 // validateRuleBody checks that a rule's body is valid JSON. A raw rule (a

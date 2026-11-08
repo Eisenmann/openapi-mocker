@@ -41,18 +41,21 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"slices"
 	"syscall"
 	"time"
 
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/codegen"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/exchange"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/graphql"
+	"github.com/Eisenmann/openapi-mocker/internal/adapter/grpcserver"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/httpapi"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/llm"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/logger"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/mcp"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/notifier"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/openapi"
+	"github.com/Eisenmann/openapi-mocker/internal/adapter/protobuf"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/repository/jsonstore"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/repository/statestore"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/router"
@@ -77,6 +80,7 @@ func main() {
 	runServer()
 }
 
+//nolint:funlen // composition root: wiring only.
 func runServer() {
 	port := getEnv("PORT", "8080")
 	dataDir := getEnv("DATA_DIR", "./data")
@@ -92,12 +96,13 @@ func runServer() {
 	codeGenerator := codegen.NewGenerator() // implements usecase.CodeGenerator.
 	graphQLEngine := graphql.NewEngine()    // implements usecase.GraphQLEngine.
 	mcpEngine := mcp.NewEngine()            // implements usecase.MCPEngine.
+	protoEngine := protobuf.NewEngine()     // implements usecase.ProtoEngine.
 
 	// ---- Multi-language code generation system ----.
 	codeGenAgent := initCodeGenerationAgent(logger.New())
 
 	// ---- Use Cases: assembled from ports, know nothing about concrete adapters ----.
-	validators := usecase.FormatValidators{GraphQL: graphQLEngine, MCP: mcpEngine}
+	validators := usecase.FormatValidators{GraphQL: graphQLEngine, MCP: mcpEngine, Proto: protoEngine}
 
 	stateStore, err := statestore.New(dataDir) // implements usecase.StateStore.
 	if err != nil {
@@ -114,17 +119,18 @@ func runServer() {
 	}
 
 	authService := usecase.NewAuthService(store, contractEngine, usecase.WithAuthLogs(logHub))
+	mockServing := usecase.NewMockServingService(
+		store, store, logHub, contractEngine, usecase.WithProjects(store), usecase.WithState(stateService),
+		usecase.WithUpstream(upstream.New(0), store), usecase.WithAuth(authService),
+	)
 	mockService := usecase.NewMockService(store, store, store, contractEngine, llmGateway)
 	services := httpapi.Services{
-		Projects:  projectService,
-		Contracts: contractService,
-		Mocks:     mockService,
-		Exchange:  usecase.NewExchangeService(projectService, store, contractService, mockService, exchange.New()),
-		Providers: usecase.NewProviderService(store, llmGateway),
-		MockServing: usecase.NewMockServingService(
-			store, store, logHub, contractEngine, usecase.WithProjects(store), usecase.WithState(stateService),
-			usecase.WithUpstream(upstream.New(0), store), usecase.WithAuth(authService),
-		),
+		Projects:       projectService,
+		Contracts:      contractService,
+		Mocks:          mockService,
+		Exchange:       usecase.NewExchangeService(projectService, store, contractService, mockService, exchange.New()),
+		Providers:      usecase.NewProviderService(store, llmGateway),
+		MockServing:    mockServing,
 		GraphQLServing: usecase.NewGraphQLServingService(store, logHub, graphQLEngine),
 		MCPServing:     usecase.NewMCPServingService(store, logHub, mcpEngine, usecase.WithProjects(store)),
 		State:          stateService,
@@ -138,13 +144,15 @@ func runServer() {
 		Access:            usecase.NewAccessService(store, store, store, usecase.WithAdminToken(os.Getenv("ADMIN_TOKEN"))),
 	}
 
+	grpcServer := setupGRPC(&services, store, protoEngine, mockServing, mockService)
+
 	// ---- Interface Adapter: HTTP controllers + routing ----.
 	handler := httpapi.NewRouter(&services)
 
 	httpServer := newHTTPServer(port, handler)
 	logStartup(port, dataDir)
 
-	serveErr := serveUntilSignal(httpServer, services.Logs, logExporter)
+	serveErr := serveUntilSignal([]*http.Server{httpServer, grpcServer}, services.Logs, logExporter)
 	if serveErr != nil {
 		log.Fatal(serveErr)
 	}
@@ -156,18 +164,31 @@ func logStartup(port, dataDir string) {
 	log.Printf("API: http://localhost:%s/api", port)
 }
 
+// listenAndServe starts srv, with TLS when it was configured for it.
+func listenAndServe(srv *http.Server) error {
+	if grpcserver.IsTLS(srv) {
+		return srv.ListenAndServeTLS("", "")
+	}
+
+	return srv.ListenAndServe()
+}
+
 // serveUntilSignal runs the server until it fails or SIGINT/SIGTERM arrives,
 // then drains requests and flushes the log exporter.
-func serveUntilSignal(srv *http.Server, logSvc *usecase.LogService, exporter *usecase.LogExporter) error {
+func serveUntilSignal(servers []*http.Server, logSvc *usecase.LogService, exporter *usecase.LogExporter) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	servers = slices.DeleteFunc(servers, func(s *http.Server) bool { return s == nil })
+
 	// Open log streams never end on their own; close them when shutdown starts.
-	srv.RegisterOnShutdown(logSvc.CloseStreams)
+	servers[0].RegisterOnShutdown(logSvc.CloseStreams)
 
-	failed := make(chan error, 1)
+	failed := make(chan error, len(servers))
 
-	go func() { failed <- srv.ListenAndServe() }()
+	for _, srv := range servers {
+		go func() { failed <- listenAndServe(srv) }()
+	}
 
 	var serveErr error
 
@@ -183,13 +204,15 @@ func serveUntilSignal(srv *http.Server, logSvc *usecase.LogService, exporter *us
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownGrace)
 	defer cancel()
 
-	err := srv.Shutdown(shutdownCtx)
-	if err != nil {
-		log.Printf("http shutdown: %v", err)
+	for _, srv := range servers {
+		err := srv.Shutdown(shutdownCtx)
+		if err != nil {
+			log.Printf("http shutdown: %v", err)
+		}
 	}
 
 	if exporter != nil {
-		err = exporter.Close(shutdownCtx)
+		err := exporter.Close(shutdownCtx)
 		if err != nil {
 			log.Printf("flushing logs: %v", err)
 		}

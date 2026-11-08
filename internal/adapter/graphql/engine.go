@@ -297,6 +297,22 @@ func (e *Engine) Execute(raw []byte, query, opName string,
 	return json.MarshalIndent(map[string]any{"data": data}, "", "  ")
 }
 
+// OperationType implements usecase.GraphQLOperationTyper: it parses the document (no
+// schema needed) and returns the type of the selected operation.
+func (e *Engine) OperationType(query, opName string) (string, error) {
+	qd, perr := parser.ParseQuery(&ast.Source{Name: "query", Input: query}) //nolint:exhaustruct // other fields are zero.
+	if perr != nil {
+		return "", queryErrorFromError(perr)
+	}
+
+	op, err := selectOperation(qd, opName)
+	if err != nil {
+		return "", err
+	}
+
+	return string(op.Operation), nil
+}
+
 // loadSchema returns the compiled schema for raw, reusing the LRU cache. The
 // cache is keyed by content hash so repeated requests for the same contract
 // don't re-parse + re-validate on every call. Must be called after all
@@ -981,3 +997,5 @@ func inputShape(s *ast.Schema, def *ast.Definition,
 
 	return out
 }
+
+var _ usecase.GraphQLOperationTyper = (*Engine)(nil)
