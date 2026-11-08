@@ -44,11 +44,11 @@ func StatusFromError(err error) int {
 		return StatusForbidden
 	case errors.Is(err, ErrNotGraphQLContract):
 		return StatusBadRequest
-	case errors.Is(err, ErrNotMCPContract):
+	case errors.Is(err, ErrNotMCPContract), errors.Is(err, ErrNotProtoContract):
 		return StatusBadRequest
 	case errors.Is(err, ErrInvalidValidationMode), errors.Is(err, ErrInvalidStateMode),
 		errors.Is(err, ErrStateNotEnabled), errors.Is(err, ErrSeedNotArray), errors.Is(err, ErrSeedInvalid),
-		errors.Is(err, ErrInvalidMatch), errors.Is(err, ErrInvalidFault),
+		errors.Is(err, ErrInvalidMatch), errors.Is(err, ErrInvalidFault), errors.Is(err, ErrInvalidStream),
 		errors.Is(err, ErrInvalidProxy), errors.Is(err, domain.ErrInvalidAuth), errors.Is(err, domain.ErrInvalidAccess),
 		errors.Is(err, ErrInvalidExport), errors.Is(err, ErrInvalidImport):
 		return StatusBadRequest

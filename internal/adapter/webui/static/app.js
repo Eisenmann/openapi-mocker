@@ -362,6 +362,7 @@ function renderContent() {
   const tabs = [
     ['contract', 'Contract'],
     ['mocks', 'Mock Data'],
+    ['grpc', 'gRPC & Streams'],
     ['state', 'Mock State'],
     ['llm', 'LLM Providers'],
     ['codegen', 'Codegen'],
@@ -393,6 +394,7 @@ function renderContent() {
   switch (state.currentTab) {
     case 'contract': renderContractTab(panel, project); break;
     case 'mocks': renderMocksTab(panel, project); break;
+    case 'grpc': renderGRPCTab(panel, project); break;
     case 'state': renderStateTab(panel, project); break;
     case 'llm': renderLLMTab(panel, project); break;
     case 'codegen': renderCodegenTab(panel, project); break;
@@ -615,10 +617,12 @@ async function renderContractTab(panel, project) {
   panel.appendChild(el('div', { class: 'card' }, [
     el('h3', {}, 'Upload / Edit Contract'),
     el('div', { class: 'row' }, [
-      el('input', { type: 'file', id: 'contractFile', accept: '.json,.yaml,.yml' }),
+      el('input', { type: 'file', id: 'contractFile', accept: '.json,.yaml,.yml,.graphql,.gql,.proto', multiple: 'multiple' }),
       el('button', { class: 'btn btn-secondary', onclick: uploadContractFile }, 'Upload File'),
     ]),
-    el('label', {}, 'Or edit manually (YAML/JSON):'),
+    el('label', {}, 'Or edit manually (YAML/JSON, GraphQL SDL, .proto):'),
+    el('p', { class: 'muted', style: 'font-size:12px; margin:0 0 6px;' },
+      'A .proto contract may hold several files: start each with a "// ==== file: path/name.proto ====" line, so imports between them resolve. Selecting several .proto files above does this for you.'),
     el('textarea', { id: 'contractRaw', rows: 16 }, contract ? contract.raw : defaultContractTemplate(project.name)),
     el('div', { class: 'row', style: 'margin-top:10px;' }, [
       el('button', { class: 'btn btn-secondary', onclick: () => validateContract() }, 'Validate'),
@@ -753,8 +757,17 @@ paths:
 async function uploadContractFile() {
   const fileInput = $('#contractFile');
   if (!fileInput.files.length) { toast('Select a file', 'error'); return; }
-  const text = await fileInput.files[0].text();
-  $('#contractRaw').value = text;
+  const files = [...fileInput.files];
+  // Several .proto files become one contract, each after a marker line; the
+  // names are what the files' import statements refer to.
+  if (files.length > 1 && files.every(f => f.name.endsWith('.proto'))) {
+    const parts = [];
+    for (const f of files) parts.push(`// ==== file: ${f.webkitRelativePath || f.name} ====\n${await f.text()}`);
+    $('#contractRaw').value = parts.join('\n\n');
+    toast(`${files.length} .proto files loaded into editor, click "Save Version"`);
+    return;
+  }
+  $('#contractRaw').value = await files[0].text();
   toast('File loaded into editor, click "Save Version"');
 }
 
@@ -801,7 +814,8 @@ async function generateContract() {
 async function renderMocksTab(panel, project) {
   panel.innerHTML = 'Loading...';
   let endpoints = [];
-  try { endpoints = await api(`/api/projects/${project.id}/endpoints`); } catch (e) { toast(e.message, 'error'); }
+  try { endpoints = await api(`/api/projects/${project.id}/endpoints`); } catch (_) { /* maybe a .proto contract */ }
+  if (!endpoints.length) endpoints = await grpcEndpoints(project.id);
   const mocks = await api(`/api/projects/${project.id}/mocks`);
 
   panel.innerHTML = '';
@@ -827,7 +841,7 @@ async function renderMocksTab(panel, project) {
       card.appendChild(el('table', {}, [
         el('tr', {}, [el('th', {}, 'Scenario'), el('th', {}, 'Match'), el('th', {}, 'Status'), el('th', {}, 'Faults'), el('th', {}, 'Source'), el('th', {}, '')]),
         ...epMocks.map(m => el('tr', {}, [
-          el('td', {}, m.scenario || 'default'),
+          el('td', {}, [m.scenario || 'default', m.stream ? ' 📡 SSE' : '', m.webSocket ? ' 🔌 WS' : '']),
           el('td', {}, m.recording ? m.recording.request : ((m.match && m.match.length) ? `${m.match.length} condition(s)` : '-')),
           el('td', {}, String(m.statusCode)),
           el('td', {}, faultSummary(m)),
@@ -845,6 +859,23 @@ async function renderMocksTab(panel, project) {
     }
     panel.appendChild(card);
   }
+}
+
+function grpcKind(m) {
+  if (m.clientStreaming && m.serverStreaming) return 'bidi';
+  if (m.serverStreaming) return 'server-stream';
+  return m.clientStreaming ? 'client-stream' : 'unary';
+}
+
+// grpcEndpoints lists the methods of a .proto contract in the shape of REST
+// endpoints: gRPC mock rules use POST and the "/pkg.Service/Method" path.
+async function grpcEndpoints(projectId) {
+  try {
+    const services = await api(`/api/projects/${projectId}/grpc/services`);
+    return services.flatMap(s => s.methods.map(m => ({
+      method: 'POST', path: m.path, summary: `gRPC ${grpcKind(m)} - ${m.inputType} -> ${m.outputType}`,
+    })));
+  } catch (_) { return []; }
 }
 
 // faultSummary describes a rule's fault injection in a few words for the mock table.
@@ -891,6 +922,14 @@ async function openMockEditor(projectId, endpoint, mock) {
   }, mock && mock.match && mock.match.length ? JSON.stringify(mock.match, null, 2) : '');
   const providerSelect = el('select', {}, providers);
   const hints = el('input', { placeholder: 'e.g. Russian names, realistic email' });
+  const streamScript = el('textarea', {
+    rows: 5,
+    placeholder: '{"retryMs":3000,"loop":false,"steps":[{"event":"tick","data":"{\\"n\\":{{counter}}}","repeat":5,"intervalMs":1000}]}',
+  }, mock && mock.stream ? JSON.stringify(mock.stream, null, 2) : '');
+  const wsScript = el('textarea', {
+    rows: 5,
+    placeholder: '{"onConnect":[{"data":"hello"}],"rules":[{"match":{"type":"contains","pattern":"ping"},"reply":[{"data":"pong"}]}],"fallback":"echo"}',
+  }, mock && mock.webSocket ? JSON.stringify(mock.webSocket, null, 2) : '');
 
   modal.appendChild(el('h3', {}, `${isEdit ? 'Edit' : 'New'} Mock: ${endpoint.method} ${endpoint.path}`));
   modal.appendChild(el('label', {}, 'Scenario (X-Mock-Scenario)'));
@@ -929,6 +968,14 @@ async function openMockEditor(projectId, endpoint, mock) {
   ]));
   modal.appendChild(el('p', { class: 'muted', style: 'font-size:12px; margin:4px 0 0;' },
     'Placeholders: {{request.body.name}} {{request.query.x}} {{request.header.X-Y}} {{path.id}} {{uuid}} {{now}} {{now +2h}} {{timestamp}} {{counter}} {{faker.name}} {{faker.email}} {{faker.int 1 100}} {{faker.pick a b c}}'));
+  modal.appendChild(el('label', {}, 'Server-Sent Events script (JSON, optional)'));
+  modal.appendChild(streamScript);
+  modal.appendChild(el('p', { class: 'muted', style: 'font-size:12px; margin:4px 0 8px;' },
+    'Turns the response into a text/event-stream timeline. Each step: data (templates allowed), event, id, repeat, intervalMs, delayMs. Also for gRPC server-streaming and GraphQL subscriptions.'));
+  modal.appendChild(el('label', {}, 'WebSocket script (JSON, optional)'));
+  modal.appendChild(wsScript);
+  modal.appendChild(el('p', { class: 'muted', style: 'font-size:12px; margin:4px 0 8px;' },
+    'Answers WebSocket upgrade requests. onConnect: steps sent on open. rules: match.type contains | equals | regex | json, match.pattern, reply steps, close. fallback: echo | ignore | close. A step with "encoding": "base64" or "hex" is sent as a binary frame. Also pingIntervalMs, closeAfterMs, loop.'));
   modal.appendChild(el('div', { class: 'card', style: 'margin-top:10px;' }, [
     el('label', {}, '✨ Generate Body via LLM'),
     el('div', { class: 'row' }, [providerSelect, hints]),
@@ -957,6 +1004,18 @@ async function openMockEditor(projectId, endpoint, mock) {
           toast('Error statuses must be HTTP codes between 400 and 599, e.g. 429, 503', 'error');
           return;
         }
+        const parseScript = (area, what) => {
+          if (!area.value.trim()) return null;
+          try {
+            const v = JSON.parse(area.value);
+            if (v === null || typeof v !== 'object' || Array.isArray(v)) throw new Error('not an object');
+            return v;
+          } catch (_) { toast(`${what} must be a JSON object`, 'error'); return undefined; }
+        };
+        const stream = parseScript(streamScript, 'SSE script');
+        if (stream === undefined) return;
+        const webSocket = parseScript(wsScript, 'WebSocket script');
+        if (webSocket === undefined) return;
         const faultPayload = {
           jitterMs: Number(jitter.value) || 0,
           errorStatuses: statuses,
@@ -977,6 +1036,7 @@ async function openMockEditor(projectId, endpoint, mock) {
           headers: mock && mock.headers ? mock.headers : {},
           raw: rawBody.checked,
           recording: mock && mock.recording ? mock.recording : null,
+          stream, webSocket,
           body: body.value,
           delayMs: Number(delay.value) || 0,
           failRatePct: Number(failRate.value) || 0,
@@ -996,6 +1056,123 @@ async function openMockEditor(projectId, endpoint, mock) {
   const root = $('#modalRoot');
   root.innerHTML = '';
   root.appendChild(el('div', { class: 'modal-backdrop', onclick: (e) => { if (e.target.classList.contains('modal-backdrop')) closeModal(); } }, modal));
+}
+
+// ---------------- gRPC & Streams tab ----------------
+
+async function renderGRPCTab(panel, project) {
+  panel.innerHTML = 'Loading...';
+  let info = { enabled: false };
+  let services = [];
+  try { info = await api('/api/grpc/info'); } catch (_) {}
+  try { services = await api(`/api/projects/${project.id}/grpc/services`); } catch (_) {}
+
+  panel.innerHTML = '';
+  const host = info.addr ? (info.addr.startsWith(':') ? `localhost${info.addr}` : info.addr) : 'localhost:PORT';
+  panel.appendChild(el('div', { class: 'card' }, [
+    el('h3', {}, 'gRPC'),
+    info.enabled
+      ? el('p', {}, ['Listening on ', el('code', {}, info.addr), (info.tls ? ' (TLS, reflection enabled).' : ' (plain HTTP/2, reflection enabled).') + ' Select this project with the ',
+          el('code', {}, info.projectKey), ' metadata key; scenarios with ', el('code', {}, 'x-mock-scenario'), '.'])
+      : el('p', { class: 'muted' }, 'The gRPC listener is off. Start the server with GRPC_PORT=9090 (or GRPC_ADDR=host:port) to enable it; add GRPC_TLS_CERT and GRPC_TLS_KEY for TLS.'),
+    info.enabled ? el('pre', {}, `grpcurl ${info.tls ? '' : '-plaintext '}-H 'x-mock-project: ${project.id}' ${host} list`) : null,
+  ]));
+
+  if (!services.length) {
+    panel.appendChild(el('p', { class: 'muted' }, 'Load a .proto contract in the "Contract" tab to mock gRPC services (unary, server-, client- and bidirectional streaming).'));
+  }
+  for (const svc of services) {
+    const card = el('div', { class: 'card' }, [el('h3', {}, svc.name)]);
+    card.appendChild(el('table', {}, [
+      el('tr', {}, [el('th', {}, 'Method'), el('th', {}, 'Type'), el('th', {}, 'Request'), el('th', {}, 'Response'), el('th', {}, '')]),
+      ...svc.methods.map(m => el('tr', {}, [
+        el('td', {}, el('code', {}, m.name)),
+        el('td', {}, grpcKind(m)),
+        el('td', {}, m.inputType),
+        el('td', {}, m.outputType),
+        el('td', {}, el('details', {}, [
+          el('summary', {}, 'examples'),
+          el('pre', {}, `grpcurl ${info.tls ? '' : '-plaintext '}-H 'x-mock-project: ${project.id}' -d '${(m.requestExample || '{}').replace(/\s+/g, ' ')}' ${host} ${svc.name}/${m.name}`),
+          el('pre', {}, m.responseExample || '{}'),
+        ])),
+      ])),
+    ]));
+    panel.appendChild(card);
+  }
+  panel.appendChild(streamTester(project.id));
+}
+
+// streamTester opens SSE, WebSocket and GraphQL-subscription connections to
+// the mock server and shows what arrives.
+function streamTester(projectId) {
+  const kind = el('select', {}, [
+    el('option', { value: 'sse' }, 'Server-Sent Events'),
+    el('option', { value: 'ws' }, 'WebSocket'),
+    el('option', { value: 'gql' }, 'GraphQL subscription'),
+  ]);
+  const path = el('input', { placeholder: '/events', value: '/events' });
+  const scenario = el('input', { placeholder: 'scenario (SSE only)' });
+  const query = el('textarea', { rows: 3, placeholder: 'subscription { tick { n } }' });
+  const send = el('input', { placeholder: 'message to send (WebSocket)' });
+  const out = el('pre', { class: 'stream-out' }, 'Messages will appear here');
+  const status = el('span', { class: 'live-status' }, 'idle');
+  let stop = null;
+
+  const log = line => { out.textContent += `\n${line}`; out.scrollTop = out.scrollHeight; };
+  const finish = label => { status.textContent = label; status.className = 'live-status'; stop = null; };
+  const wsURL = p => `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/mock/${projectId}${p}`;
+
+  const connect = async () => {
+    if (stop) stop();
+    out.textContent = '';
+    status.textContent = 'connecting'; status.className = 'live-status reconnecting';
+    if (kind.value === 'sse') {
+      const ctl = new AbortController();
+      stop = () => ctl.abort();
+      const headers = {};
+      if (scenario.value) headers['X-Mock-Scenario'] = scenario.value;
+      try {
+        const resp = await fetch(`/mock/${projectId}${path.value}`, { headers, signal: ctl.signal });
+        status.textContent = `streaming (HTTP ${resp.status})`; status.className = 'live-status live';
+        if (!(resp.headers.get('Content-Type') || '').startsWith('text/event-stream')) { log(await resp.text()); return finish('done'); }
+        await readEventStream(resp.body, ev => log(`[${ev.event}${ev.id ? ' #' + ev.id : ''}] ${ev.data}`));
+        finish('stream ended');
+      } catch (e) { finish(ctl.signal.aborted ? 'stopped' : `error: ${e.message}`); }
+      return;
+    }
+    const gql = kind.value === 'gql';
+    const ws = gql ? new WebSocket(wsURL('/graphql'), 'graphql-transport-ws') : new WebSocket(wsURL(path.value));
+    stop = () => ws.close();
+    ws.onopen = () => {
+      status.textContent = 'connected'; status.className = 'live-status live';
+      if (gql) ws.send(JSON.stringify({ type: 'connection_init' }));
+    };
+    ws.onmessage = e => {
+      log(`< ${e.data}`);
+      if (gql && JSON.parse(e.data).type === 'connection_ack') {
+        ws.send(JSON.stringify({ id: '1', type: 'subscribe', payload: { query: query.value } }));
+      }
+    };
+    ws.onerror = () => log('! connection error');
+    ws.onclose = ev => finish(`closed (${ev.code})`);
+    send.onkeydown = e => {
+      if (e.key !== 'Enter' || ws.readyState !== WebSocket.OPEN) return;
+      ws.send(send.value); log(`> ${send.value}`); send.value = '';
+    };
+  };
+
+  return el('div', { class: 'card' }, [
+    el('h3', {}, 'Stream tester'),
+    el('div', { class: 'row' }, [kind, path, scenario]),
+    query,
+    el('div', { class: 'row-gap', style: 'margin:8px 0;' }, [
+      el('button', { class: 'btn btn-secondary', onclick: connect }, 'Connect'),
+      el('button', { class: 'btn btn-secondary', onclick: () => { if (stop) stop(); } }, 'Disconnect'),
+      status,
+    ]),
+    send,
+    out,
+  ]);
 }
 
 // ---------------- LLM tab ----------------

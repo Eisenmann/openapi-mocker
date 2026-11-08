@@ -27,6 +27,7 @@ type ContractService struct {
 type FormatValidators struct {
 	GraphQL GraphQLEngine
 	MCP     MCPEngine
+	Proto   ProtoEngine
 }
 
 // NewContractService assembles the contract service. The variadic parameter
@@ -78,7 +79,7 @@ func (s *ContractService) WithConverter(c ContractConverter) *ContractService {
 // normalize converts a Swagger 2.0 / OpenAPI 3.1 document to OpenAPI 3.0 when
 // a converter is wired. note says what was done ("" when nothing was).
 func (s *ContractService) normalize(raw string) (converted, note string, err error) {
-	if s.converter == nil || IsGraphQL(raw) || IsMCP(raw) {
+	if s.converter == nil || IsGraphQL(raw) || IsMCP(raw) || IsProto(raw) {
 		return raw, "", nil
 	}
 
@@ -136,6 +137,14 @@ func (s *ContractService) Validate(raw string) ValidationResult {
 
 func (s *ContractService) validateNormalized(raw string) ValidationResult {
 	switch detectFormat(raw) {
+	case FormatProto:
+		if s.validators.Proto == nil {
+			return ValidationResult{Valid: true}
+		}
+
+		res := s.validators.Proto.Validate([]byte(raw))
+
+		return ValidationResult{Valid: res.Valid, Errors: res.Errors, OpCount: res.Methods}
 	case FormatGraphQL:
 		if s.validators.GraphQL == nil {
 			return ValidationResult{Valid: true}
@@ -206,6 +215,12 @@ func (s *ContractService) Publish(projectID, raw, source string) (*domain.Contra
 // engine is not wired is accepted as-is.
 func (s *ContractService) validateFormat(format, raw string) error {
 	switch format {
+	case FormatProto:
+		if s.validators.Proto == nil {
+			return nil
+		}
+
+		return s.validators.Proto.ParseAndValidate([]byte(raw))
 	case FormatGraphQL:
 		if s.validators.GraphQL == nil {
 			return nil
@@ -229,6 +244,8 @@ func (s *ContractService) validateFormat(format, raw string) error {
 // not an OpenAPI document.
 func detectFormat(raw string) string {
 	switch {
+	case IsProto(raw):
+		return FormatProto
 	case IsGraphQL(raw):
 		return FormatGraphQL
 	case IsMCP(raw):

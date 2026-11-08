@@ -150,6 +150,20 @@ type MockResponse struct {
 	Matched     bool
 	// Violations holds the request-validation problems found (warn/enforce).
 	Violations []string
+	// Stream, when set, replaces Body: the response is a Server-Sent Events
+	// stream the HTTP adapter plays to the client.
+	Stream *StreamPlan
+	// WebSocket, when set, answers a WebSocket upgrade; the HTTP adapter
+	// completes the handshake and runs the plan on the connection.
+	WebSocket *WSPlan
+}
+
+// StreamScripter is implemented by contract engines that can read stream
+// scripts from the contract itself (the x-mock-stream and x-mock-websocket
+// operation extensions of OpenAPI).
+type StreamScripter interface {
+	// StreamScripts returns the scripts declared on the operation; either may be nil.
+	StreamScripts(raw []byte, method, path string) (*domain.StreamScript, *domain.WSScript, error)
 }
 
 // RequestData is the part of an incoming mock request the contract engine

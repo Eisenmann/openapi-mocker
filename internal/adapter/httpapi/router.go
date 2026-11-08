@@ -88,11 +88,14 @@ func NewRouter(s *Services) http.Handler {
 // The catch-all /mock/{projectId}/{path...} route is registered last.
 func (a *api) registerMockServerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /mock/{projectId}/graphql", a.serveGraphQL)
+	mux.HandleFunc("GET /mock/{projectId}/graphql", a.serveGraphQLWS)
 	mux.HandleFunc("POST /mock/{projectId}/mcp", a.serveMCP)
 	mux.HandleFunc("GET /mock/{projectId}/mcp", a.serveMCPStream)
 	mux.HandleFunc("DELETE /mock/{projectId}/mcp", a.endMCPSession)
 	mux.HandleFunc("GET /api/projects/{id}/graphql/schema", a.graphQLSchema)
 	mux.HandleFunc("GET /api/projects/{id}/graphql/operations", a.graphQLOperations)
+	mux.HandleFunc("GET /api/projects/{id}/grpc/services", a.grpcServices)
+	mux.HandleFunc("GET /api/grpc/info", a.grpcInfo)
 	mux.HandleFunc("GET /api/projects/{id}/mcp/tools", a.mcpTools)
 	mux.HandleFunc("GET /api/projects/{id}/mcp/catalog", a.mcpCatalog)
 	mux.HandleFunc("/mock/{projectId}/{path...}", a.serveMock)

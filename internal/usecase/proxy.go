@@ -26,6 +26,7 @@ const (
 	// Response sources of rule and example answers.
 	SourceRule          = "rule"
 	SourceSchemaExample = "schema-example"
+	SourceContract      = "contract-script"
 
 	// Response sources of proxied requests.
 	SourceProxyForward = "proxy-forward"

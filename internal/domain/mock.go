@@ -21,6 +21,12 @@ type MockRule struct {
 	// Fault holds the rest of the fault injection: latency jitter, timeouts,
 	// dropped connections and malformed bodies. Nil means none.
 	Fault *Fault `json:"fault,omitempty"`
+	// Stream turns the response into a Server-Sent Events stream that plays
+	// this timeline; Body is then ignored.
+	Stream *StreamScript `json:"stream,omitempty"`
+	// WebSocket answers a WebSocket upgrade request of the operation with this
+	// script. Plain requests to the same operation get the rule's normal response.
+	WebSocket *WSScript `json:"webSocket,omitempty"`
 	// Raw serves the body and header values verbatim, without filling in
 	// {{placeholders}}. Recorded rules are raw, since the upstream's data may
 	// contain "{{".

@@ -40,6 +40,13 @@ type Services struct {
 	Logs           *usecase.LogService
 	Drift          *usecase.DriftService
 	CodeGenAgent   CodeGenAgentPort
+	// GRPCServing serves .proto contract info; nil if gRPC is not wired.
+	GRPCServing *usecase.GRPCServingService
+	// GRPCAddr is the address the gRPC listener is bound to ("" when gRPC is
+	// disabled); it is shown to the UI.
+	GRPCAddr string
+	// GRPCTLS is true when the gRPC listener serves TLS.
+	GRPCTLS bool
 	// MCPRequireSession makes the MCP endpoint reject requests that carry
 	// no Mcp-Session-Id (other than initialize), like a strict server.
 	MCPRequireSession bool

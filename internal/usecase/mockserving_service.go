@@ -186,6 +186,10 @@ func (s *MockServingService) respond(projectID, raw, pathTemplate string, req *M
 		return s.fromRule(rule, tc)
 	}
 
+	if !IsWebSocketUpgrade(tc.Header) && s.hasWebSocketRule(projectID, pathTemplate, method) {
+		return upgradeRequired(SourceRule)
+	}
+
 	if resp, ok := s.proxy(projectID, pathTemplate, req, tc); ok {
 		return resp
 	}
@@ -195,6 +199,10 @@ func (s *MockServingService) respond(projectID, raw, pathTemplate string, req *M
 		if ok {
 			return resp
 		}
+	}
+
+	if resp, ok := s.fromContractScript(raw, method, path, tc); ok {
+		return resp
 	}
 
 	// Fallback: no rule configured manually or via LLM — example from schema, 200.
@@ -209,6 +217,12 @@ func (s *MockServingService) respond(projectID, raw, pathTemplate string, req *M
 	}
 
 	code, _ := strconv.Atoi(status)
+
+	if strings.HasPrefix(strings.ToLower(contentType), ContentTypeEventStream) {
+		plan := s.planStream(scriptFromEventStream(body), tc)
+
+		return streamResponse(plan, 0, SourceSchemaExample, "")
+	}
 
 	return &MockResponse{
 		StatusCode: code, ContentType: nonEmpty(contentType, ContentTypeJSON),
@@ -225,8 +239,11 @@ func (s *MockServingService) findRule(
 ) *domain.MockRule {
 	var rules []*domain.MockRule
 
+	upgrade := IsWebSocketUpgrade(tc.Header)
+
 	for _, m := range s.mocks.ListMocks(projectID) {
-		if strings.EqualFold(m.Method, method) && m.Path == pathTemplate {
+		// A WebSocket rule answers upgrade requests, and only those.
+		if strings.EqualFold(m.Method, method) && m.Path == pathTemplate && (m.WebSocket != nil) == upgrade {
 			rules = append(rules, m)
 		}
 	}
@@ -346,6 +363,17 @@ func (s *MockServingService) fromRule(rule *domain.MockRule, tc *TemplateContext
 		headers, body = s.renderHeaders(headers, tc), s.renderBody(body, contentType, tc)
 	}
 
+	if rule.WebSocket != nil {
+		return websocketResponse(s.planWebSocket(rule.WebSocket, tc), delay, SourceRule, rule.ID)
+	}
+
+	if rule.Stream != nil {
+		resp := streamResponse(s.planStream(rule.Stream, tc), delay, SourceRule, rule.ID)
+		resp.StatusCode, resp.Headers = code, mergeHeaders(resp.Headers, headers)
+
+		return resp
+	}
+
 	resp := &MockResponse{
 		StatusCode: code, ContentType: contentType, Headers: headers, Body: []byte(body),
 		DelayMs: delay, Source: SourceRule, MatchedRule: rule.ID, Matched: true,
@@ -419,4 +447,121 @@ func errorBody(msg string) []byte {
 	// importing encoding/json just for one string — manually escape the minimum needed.
 	esc := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`).Replace(msg)
 	return []byte(`{"error":"` + esc + `"}`)
+}
+
+// IsWebSocketUpgrade reports whether the headers ask for a WebSocket upgrade.
+func IsWebSocketUpgrade(h map[string][]string) bool {
+	return headerHasToken(h, headerUpgrade, "websocket") && headerHasToken(h, headerConnection, "upgrade")
+}
+
+// headerHasToken reports whether a comma-separated header holds the token.
+func headerHasToken(h map[string][]string, name, token string) bool {
+	for k, values := range h {
+		if !strings.EqualFold(k, name) {
+			continue
+		}
+
+		for _, v := range values {
+			for _, part := range strings.Split(v, ",") {
+				if strings.EqualFold(strings.TrimSpace(part), token) {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+func mergeHeaders(base, extra map[string]string) map[string]string {
+	out := make(map[string]string, len(base)+len(extra))
+	for k, v := range base {
+		out[k] = v
+	}
+
+	for k, v := range extra {
+		out[k] = v
+	}
+
+	return out
+}
+
+// fromContractScript answers with the stream or WebSocket script declared on
+// the operation in the contract itself (x-mock-stream / x-mock-websocket).
+func (s *MockServingService) fromContractScript(raw, method, path string, tc *TemplateContext) (*MockResponse, bool) {
+	scripter, ok := s.engine.(StreamScripter)
+	if !ok {
+		return nil, false
+	}
+
+	stream, ws, err := scripter.StreamScripts([]byte(raw), method, path)
+	if err != nil {
+		return nil, false
+	}
+
+	if IsWebSocketUpgrade(tc.Header) {
+		if ws != nil {
+			return websocketResponse(s.planWebSocket(ws, tc), 0, SourceContract, ""), true
+		}
+
+		return nil, false
+	}
+
+	if stream != nil {
+		return streamResponse(s.planStream(stream, tc), 0, SourceContract, ""), true
+	}
+
+	if ws != nil {
+		return upgradeRequired(SourceContract), true
+	}
+
+	return nil, false
+}
+
+// upgradeRequired answers a plain HTTP request to a WebSocket-only operation.
+func upgradeRequired(source string) *MockResponse {
+	return &MockResponse{
+		StatusCode: StatusUpgradeRequired, ContentType: ContentTypeJSON,
+		Headers: map[string]string{headerUpgrade: "websocket", headerConnection: headerUpgrade},
+		Body:    errorBody("this operation speaks WebSocket; send an Upgrade: websocket request"),
+		Source:  source, Matched: true,
+	}
+}
+
+// hasWebSocketRule reports whether the operation has a WebSocket mock rule.
+func (s *MockServingService) hasWebSocketRule(projectID, pathTemplate, method string) bool {
+	for _, m := range s.mocks.ListMocks(projectID) {
+		if m.WebSocket != nil && strings.EqualFold(m.Method, method) && m.Path == pathTemplate {
+			return true
+		}
+	}
+
+	return false
+}
+
+// ServeRPC answers a call of a non-HTTP protocol (gRPC) that is described by
+// its own contract engine: the mock rule for the endpoint decides, otherwise
+// fallback builds the default JSON body. The call is logged like any request.
+func (s *MockServingService) ServeRPC(
+	projectID, endpoint string, req *MockRequest, fallback func() ([]byte, error),
+) MockResponse {
+	sv := &served{req: req, endpoint: endpoint, start: time.Now()}
+	tc := s.templateContext(projectID, endpoint, req)
+
+	if rule := s.findRule(projectID, endpoint, req.Method, req.Scenario, tc); rule != nil {
+		return s.finish(projectID, sv, s.fromRule(rule, tc))
+	}
+
+	body, err := fallback()
+	if err != nil {
+		return s.finish(projectID, sv, &MockResponse{
+			StatusCode: StatusInternalServerError, ContentType: ContentTypeJSON,
+			Body: errorBody("failed to build response example: " + err.Error()),
+		})
+	}
+
+	return s.finish(projectID, sv, &MockResponse{
+		StatusCode: StatusOK, ContentType: ContentTypeJSON, Body: body,
+		Source: SourceSchemaExample, Matched: true,
+	})
 }
