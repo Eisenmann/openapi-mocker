@@ -1,0 +1,90 @@
+name: Release
+
+# Runs when a tag vX.Y.Z is pushed, which includes creating a release with a
+# new tag in the GitHub UI. It builds the binaries and attaches them, with a
+# checksum file, to the release (created here when it does not exist yet).
+# The container image is published by docker-publish.yml on the same tag.
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test ./... -race
+
+  build:
+    name: Build ${{ matrix.os }}/${{ matrix.arch }}
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { os: linux, arch: amd64 }
+          - { os: linux, arch: arm64 }
+          - { os: darwin, arch: amd64 }
+          - { os: darwin, arch: arm64 }
+          - { os: windows, arch: amd64 }
+          - { os: windows, arch: arm64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build and package
+        run: bash deploy/release-build.sh "${{ matrix.os }}" "${{ matrix.arch }}" "${GITHUB_REF_NAME#v}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openapi-mocker_${{ matrix.os }}_${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+      - name: Checksums
+        working-directory: assets
+        run: sha256sum * > checksums.txt
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # The release was created in the UI (with its own notes): add the files.
+            gh release upload "$TAG" assets/* --clobber
+          else
+            args=(--title "$TAG" --verify-tag)
+            # Notes from docs/release-notes/vX.Y.Z.md when present, else generated.
+            if [ -f "docs/release-notes/$TAG.md" ]; then
+              args+=(--notes-file "docs/release-notes/$TAG.md")
+            else
+              args+=(--generate-notes)
+            fi
+            # v1.3.0-rc.1 and the like are pre-releases.
+            case "$TAG" in *-*) args+=(--prerelease) ;; esac
+            gh release create "$TAG" assets/* "${args[@]}"
+          fi
