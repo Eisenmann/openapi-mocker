@@ -37,6 +37,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -46,20 +47,12 @@ import (
 	"time"
 
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/codegen"
-	"github.com/Eisenmann/openapi-mocker/internal/adapter/exchange"
-	"github.com/Eisenmann/openapi-mocker/internal/adapter/graphql"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/grpcserver"
-	"github.com/Eisenmann/openapi-mocker/internal/adapter/httpapi"
-	"github.com/Eisenmann/openapi-mocker/internal/adapter/llm"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/logger"
-	"github.com/Eisenmann/openapi-mocker/internal/adapter/mcp"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/notifier"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/openapi"
-	"github.com/Eisenmann/openapi-mocker/internal/adapter/protobuf"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/repository/jsonstore"
-	"github.com/Eisenmann/openapi-mocker/internal/adapter/repository/statestore"
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/router"
-	"github.com/Eisenmann/openapi-mocker/internal/adapter/upstream"
 	"github.com/Eisenmann/openapi-mocker/internal/agents"
 	"github.com/Eisenmann/openapi-mocker/internal/domain/ports"
 	"github.com/Eisenmann/openapi-mocker/internal/usecase"
@@ -77,82 +70,46 @@ func main() {
 		os.Exit(runMCPStdio(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
 	}
 
+	if len(os.Args) > 1 {
+		if code, handled := runSubcommand(os.Args[1], os.Args[2:]); handled {
+			os.Exit(code)
+		}
+	}
+
 	runServer()
 }
 
-//nolint:funlen // composition root: wiring only.
+// version is set at build time: -ldflags "-X main.version=1.2.3".
+var version = "dev"
+
+// runSubcommand runs the serve, healthcheck and version commands.
+func runSubcommand(name string, args []string) (code int, handled bool) {
+	switch name {
+	case "serve":
+		return runServe(args, os.Stderr), true
+	case "healthcheck":
+		return runHealthcheck(args, os.Stderr), true
+	case "version", "--version":
+		_, _ = fmt.Fprintln(os.Stdout, "openapi-mocker", version)
+		return exitOK, true
+	default:
+		return 0, false
+	}
+}
+
 func runServer() {
 	port := getEnv("PORT", "8080")
 	dataDir := getEnv("DATA_DIR", "./data")
 
-	// ---- Frameworks & Drivers / Interface Adapters: concrete implementations ----.
-	store, err := jsonstore.New(dataDir) // implements all 5 repository ports.
-	if err != nil {
-		log.Fatalf("failed to initialize store (%s): %v", dataDir, err)
-	}
-
-	contractEngine := openapi.NewEngine()   // implements usecase.ContractEngine.
-	llmGateway := llm.NewGateway()          // implements usecase.LLMGateway.
-	codeGenerator := codegen.NewGenerator() // implements usecase.CodeGenerator.
-	graphQLEngine := graphql.NewEngine()    // implements usecase.GraphQLEngine.
-	mcpEngine := mcp.NewEngine()            // implements usecase.MCPEngine.
-	protoEngine := protobuf.NewEngine()     // implements usecase.ProtoEngine.
-
-	// ---- Multi-language code generation system ----.
-	codeGenAgent := initCodeGenerationAgent(logger.New())
-
-	// ---- Use Cases: assembled from ports, know nothing about concrete adapters ----.
-	validators := usecase.FormatValidators{GraphQL: graphQLEngine, MCP: mcpEngine, Proto: protoEngine}
-
-	stateStore, err := statestore.New(dataDir) // implements usecase.StateStore.
-	if err != nil {
-		log.Fatalf("failed to initialize state store (%s): %v", dataDir, err)
-	}
-
-	stateService := usecase.NewStateService(stateStore, store, contractEngine)
-	contractService := newContractService(store, contractEngine, llmGateway, validators)
-	projectService := usecase.NewProjectService(store)
-
-	logHub, logExporter, err := newLogHub(store, os.Stdout)
+	a, err := buildApp(dataDir, false)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	authService := usecase.NewAuthService(store, contractEngine, usecase.WithAuthLogs(logHub))
-	mockServing := usecase.NewMockServingService(
-		store, store, logHub, contractEngine, usecase.WithProjects(store), usecase.WithState(stateService),
-		usecase.WithUpstream(upstream.New(0), store), usecase.WithAuth(authService),
-	)
-	mockService := usecase.NewMockService(store, store, store, contractEngine, llmGateway)
-	services := httpapi.Services{
-		Projects:       projectService,
-		Contracts:      contractService,
-		Mocks:          mockService,
-		Exchange:       usecase.NewExchangeService(projectService, store, contractService, mockService, exchange.New()),
-		Providers:      usecase.NewProviderService(store, llmGateway),
-		MockServing:    mockServing,
-		GraphQLServing: usecase.NewGraphQLServingService(store, logHub, graphQLEngine),
-		MCPServing:     usecase.NewMCPServingService(store, logHub, mcpEngine, usecase.WithProjects(store)),
-		State:          stateService,
-		Auth:           authService,
-		Codegen:        usecase.NewCodegenService(store, codeGenerator),
-		Logs:           usecase.NewLogService(logHub),
-		Drift:          usecase.NewDriftService(store),
-		CodeGenAgent:   codeGenAgent,
-
-		MCPRequireSession: os.Getenv("MCP_REQUIRE_SESSION") == "true",
-		Access:            usecase.NewAccessService(store, store, store, usecase.WithAdminToken(os.Getenv("ADMIN_TOKEN"))),
-	}
-
-	grpcServer := setupGRPC(&services, store, protoEngine, mockServing, mockService)
-
-	// ---- Interface Adapter: HTTP controllers + routing ----.
-	handler := httpapi.NewRouter(&services)
-
-	httpServer := newHTTPServer(port, handler)
+	httpServer := newHTTPServer(port, a.handler)
 	logStartup(port, dataDir)
 
-	serveErr := serveUntilSignal([]*http.Server{httpServer, grpcServer}, services.Logs, logExporter)
+	serveErr := serveUntilSignal([]*http.Server{httpServer, a.grpc}, a.services.Logs, a.exporter)
 	if serveErr != nil {
 		log.Fatal(serveErr)
 	}
@@ -173,12 +130,20 @@ func listenAndServe(srv *http.Server) error {
 	return srv.ListenAndServe()
 }
 
-// serveUntilSignal runs the server until it fails or SIGINT/SIGTERM arrives,
+// serveUntilSignal runs the servers until one fails or SIGINT/SIGTERM arrives,
 // then drains requests and flushes the log exporter.
 func serveUntilSignal(servers []*http.Server, logSvc *usecase.LogService, exporter *usecase.LogExporter) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	return serveUntil(ctx, servers, logSvc, exporter)
+}
+
+// serveUntil runs the servers until one fails or ctx ends, then drains
+// requests and flushes the log exporter.
+func serveUntil(
+	ctx context.Context, servers []*http.Server, logSvc *usecase.LogService, exporter *usecase.LogExporter,
+) error {
 	servers = slices.DeleteFunc(servers, func(s *http.Server) bool { return s == nil })
 
 	// Open log streams never end on their own; close them when shutdown starts.
@@ -201,7 +166,7 @@ func serveUntilSignal(servers []*http.Server, logSvc *usecase.LogService, export
 		log.Print("shutting down")
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownGrace)
+	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownGrace)
 	defer cancel()
 
 	for _, srv := range servers {
