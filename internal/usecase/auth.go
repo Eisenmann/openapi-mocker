@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -148,7 +149,8 @@ func (a *AuthService) AuthorizeEndpoint(projectID string, req *MockRequest) *Moc
 	denied := a.evaluate(projectID, cfg, anyRequirement(), req)
 	if denied != nil && a.logs != nil {
 		a.logs.Add(&domain.RequestLog{
-			ID: "", ProjectID: projectID, Method: req.Method, Path: req.Path, StatusCode: denied.StatusCode,
+			ID: "", ProjectID: projectID, Method: req.Method, Path: req.Path,
+			Query: url.Values(req.Query).Encode(), StatusCode: denied.StatusCode,
 			MatchedRule: "", Matched: false, Source: SourceAuth, Timestamp: a.now().UTC(),
 			DurationMs: 0, Violations: nil, Fault: "", Endpoint: "", Captured: false,
 			Request:  rawCapture(req.Header, req.Body),

@@ -42,7 +42,8 @@ type LogHub struct {
 	nextSub int
 	closing bool
 
-	obs *observations
+	obs     *observations
+	journal *journal
 
 	exporter     *LogExporter
 	exportBodies bool
@@ -119,7 +120,7 @@ func NewLogHub(inner LogRepository, policy CapturePolicy, opts ...LogHubOption) 
 	h := &LogHub{
 		inner: inner, policy: policy.normalized(), now: time.Now,
 		mu: sync.Mutex{}, ring: nil, subs: map[int]*Subscription{}, nextSub: 0, closing: false,
-		obs: newObservations(), exporter: nil, exportBodies: false,
+		obs: newObservations(), journal: newJournal(), exporter: nil, exportBodies: false,
 		info: LogInfo{Mode: "local", Sinks: nil, ExportBodies: false},
 	}
 
@@ -162,6 +163,7 @@ func (h *LogHub) Add(l *domain.RequestLog) {
 	}
 
 	h.obs.record(&full)
+	h.journal.add(&full)
 
 	for _, sub := range h.subs {
 		if sub.projectID != full.ProjectID {

@@ -250,6 +250,7 @@ func (s *GraphQLServingService) logResult(projectID string, statusCode int, matc
 		ProjectID:   projectID,
 		Method:      methodPost,
 		Path:        fmt.Sprintf(GraphQLMockPath, projectID),
+		Query:       "",
 		StatusCode:  statusCode,
 		MatchedRule: "",
 		Matched:     matched,

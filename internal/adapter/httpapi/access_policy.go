@@ -105,6 +105,7 @@ func buildAuditTable() map[string]accessRule {
 		change(domain.RoleEditor, "state.reset", "state", "collection"))
 	add(http.MethodDelete, proj+"/drift", change(domain.RoleEditor, "drift.clear", "drift", ""))
 	add(http.MethodDelete, proj+"/stats", change(domain.RoleEditor, "stats.reset", "stats", ""))
+	add(http.MethodDelete, proj+"/calls", change(domain.RoleEditor, "calls.clear", "calls", ""))
 	add(http.MethodPost, proj+"/access/tokens", change(domain.RoleAdmin, "token.create", "token", ""))
 	add(http.MethodDelete, proj+"/access/tokens/{tokenId}",
 		change(domain.RoleAdmin, "token.revoke", "token", "tokenId"))
@@ -122,6 +123,7 @@ var notAudited = map[string]bool{ //nolint:gochecknoglobals // a constant table.
 	http.MethodPost + " " + projectRoutePrefix + "/contract/validate": true,
 	http.MethodPost + " " + projectRoutePrefix + "/contract/generate": true,
 	http.MethodPost + " " + projectRoutePrefix + "/mocks/generate":    true,
+	http.MethodPost + " " + projectRoutePrefix + "/verify":            true,
 }
 
 // ruleFor returns the access rule of a route pattern. ok is false for routes
