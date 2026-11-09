@@ -504,3 +504,144 @@ func TestObservability_StreamEndsWhenServerShutsDown(t *testing.T) {
 		t.Errorf("new stream after close: %d", again.Code)
 	}
 }
+
+func TestVerifyAPI_CalledWithBody(t *testing.T) {
+	t.Parallel()
+
+	e := newObsEnv(t, usecase.DefaultCapturePolicy())
+	e.hit(t, "7", `{"name":"ann","role":"admin"}`)
+
+	verify := func(body, query string) (int, map[string]any) {
+		rec := doRequest(t, e.h, http.MethodPost, e.url("/verify"+query), strings.NewReader(body),
+			map[string]string{"Content-Type": "application/json"})
+
+		var out map[string]any
+
+		decodeJSON(t, rec, &out)
+
+		return rec.Code, out
+	}
+
+	code, out := verify(`{"method":"POST","path":"/echo/{id}","body":{"json":{"name":"ann"}}}`, "")
+	if code != http.StatusOK || out["passed"] != true || out["count"] != float64(1) {
+		t.Fatalf("pass: %d %+v", code, out)
+	}
+
+	code, out = verify(`{"method":"POST","path":"/echo/7","body":{"json":{"name":"bob"}}}`, "")
+	if code != http.StatusOK || out["passed"] != false || out["closest"] == nil {
+		t.Fatalf("fail: %d %+v", code, out)
+	}
+
+	code, _ = verify(`{"path":"/echo/9"}`, "?strict=true")
+	if code != http.StatusConflict {
+		t.Errorf("strict failure = %d", code)
+	}
+
+	code, _ = verify(`{"path":"/echo/7","exactly":1}`, "?strict=true")
+	if code != http.StatusOK {
+		t.Errorf("strict pass = %d", code)
+	}
+
+	code, _ = verify(`{}`, "")
+	if code != http.StatusBadRequest {
+		t.Errorf("empty = %d", code)
+	}
+
+	rec := e.get(t, e.url("/calls?limit=5"), nil)
+
+	var calls []map[string]any
+
+	decodeJSON(t, rec, &calls)
+
+	if rec.Code != http.StatusOK || len(calls) != 1 || calls[0]["request"] == nil {
+		t.Fatalf("calls: %d %+v", rec.Code, calls)
+	}
+
+	if rec := doRequest(t, e.h, http.MethodDelete, e.url("/calls"), nil, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("clear: %d", rec.Code)
+	}
+
+	_, out = verify(`{"path":"/echo/7","exactly":0}`, "")
+	if out["passed"] != true {
+		t.Errorf("after clear: %+v", out)
+	}
+}
+
+func TestVerifyAPI_QueryIsRecorded(t *testing.T) {
+	t.Parallel()
+
+	e := newObsEnv(t, usecase.DefaultCapturePolicy())
+	doRequest(t, e.h, http.MethodPost, "/mock/"+e.id+"/echo/1?b=2&a=1", strings.NewReader(`{}`),
+		map[string]string{"Content-Type": "application/json"})
+
+	rec := doRequest(t, e.h, http.MethodPost, e.url("/verify"),
+		strings.NewReader(`{"path":"/echo/1","query":{"a":"1","b":"2"}}`), map[string]string{"Content-Type": "application/json"})
+
+	var out struct{ Passed bool }
+
+	decodeJSON(t, rec, &out)
+
+	if !out.Passed {
+		t.Errorf("body: %s", rec.Body.String())
+	}
+}
+
+func TestVerifyAPI_ViewerMayVerifyButNotClear(t *testing.T) {
+	t.Parallel()
+
+	e := newObsEnv(t, usecase.DefaultCapturePolicy())
+	e.hit(t, "1", `{}`)
+
+	post := func(path, body, tok string) *httptest.ResponseRecorder {
+		h := map[string]string{"Content-Type": "application/json"}
+		if tok != "" {
+			h["Authorization"] = "Bearer " + tok
+		}
+
+		return doRequest(t, e.h, http.MethodPost, e.url(path), strings.NewReader(body), h)
+	}
+
+	var admin, viewer created
+
+	decodeJSON(t, post("/access/tokens", `{"name":"a","role":"admin"}`, ""), &admin)
+	decodeJSON(t, post("/access/tokens", `{"name":"v","role":"viewer"}`, admin.Token), &viewer)
+
+	if post("/verify", `{"path":"/echo/1"}`, "").Code != http.StatusUnauthorized {
+		t.Error("verify must need a token once locked")
+	}
+
+	if post("/verify", `{"path":"/echo/1"}`, viewer.Token).Code != http.StatusOK {
+		t.Error("a viewer may verify")
+	}
+
+	del := func(tok string) int {
+		return doRequest(t, e.h, http.MethodDelete, e.url("/calls"), nil,
+			map[string]string{"Authorization": "Bearer " + tok}).Code
+	}
+
+	if del(viewer.Token) != http.StatusForbidden {
+		t.Error("a viewer must not clear calls")
+	}
+
+	if del(admin.Token) != http.StatusNoContent {
+		t.Error("an admin may clear calls")
+	}
+}
+
+func TestVerifyAPI_BadInput(t *testing.T) {
+	t.Parallel()
+
+	e := newObsEnv(t, usecase.DefaultCapturePolicy())
+
+	for _, q := range []string{"?limit=0", "?limit=x"} {
+		if e.get(t, e.url("/calls"+q), nil).Code != http.StatusBadRequest {
+			t.Errorf("calls%s must be rejected", q)
+		}
+	}
+
+	rec := doRequest(t, e.h, http.MethodPost, e.url("/verify"), strings.NewReader(`{not json`),
+		map[string]string{"Content-Type": "application/json"})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("malformed body = %d", rec.Code)
+	}
+}

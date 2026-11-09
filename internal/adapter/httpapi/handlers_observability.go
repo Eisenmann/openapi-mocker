@@ -31,6 +31,7 @@ func (a *api) registerObservabilityRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/projects/{id}/stats", a.getStats)
 	mux.HandleFunc("DELETE /api/projects/{id}/stats", a.resetStats)
 	mux.HandleFunc("GET /metrics", a.serveMetrics)
+	a.registerVerifyRoutes(mux)
 }
 
 // listLogs returns the most recent request log entries, newest first, without

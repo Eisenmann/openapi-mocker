@@ -26,6 +26,7 @@ var (
 	ErrContractInvalid         = errors.New("contract cannot be converted")
 	ErrInvalidExport           = errors.New("cannot export")
 	ErrInvalidImport           = errors.New("cannot import")
+	ErrInvalidVerify           = errors.New("invalid verification")
 )
 
 // StatusFromError maps a usecase-layer error to the HTTP status code that both
@@ -50,7 +51,7 @@ func StatusFromError(err error) int {
 		errors.Is(err, ErrStateNotEnabled), errors.Is(err, ErrSeedNotArray), errors.Is(err, ErrSeedInvalid),
 		errors.Is(err, ErrInvalidMatch), errors.Is(err, ErrInvalidFault), errors.Is(err, ErrInvalidStream),
 		errors.Is(err, ErrInvalidProxy), errors.Is(err, domain.ErrInvalidAuth), errors.Is(err, domain.ErrInvalidAccess),
-		errors.Is(err, ErrInvalidExport), errors.Is(err, ErrInvalidImport):
+		errors.Is(err, ErrInvalidExport), errors.Is(err, ErrInvalidImport), errors.Is(err, ErrInvalidVerify):
 		return StatusBadRequest
 	default:
 		return StatusInternalServerError

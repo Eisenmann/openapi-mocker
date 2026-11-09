@@ -314,6 +314,7 @@ func (s *MCPServingService) logResult(projectID string, o *mcpOutcome, start tim
 		ProjectID:   projectID,
 		Method:      methodPost,
 		Path:        fmt.Sprintf(MCPMockPath, projectID),
+		Query:       "",
 		StatusCode:  o.status,
 		MatchedRule: o.rule,
 		Matched:     o.matched,

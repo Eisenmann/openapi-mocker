@@ -1574,6 +1574,47 @@ async function renderLogsTab(panel, project) {
     ]),
   ]));
 
+  // ---- test assertions ----
+  const vMethod = el('select', {}, ['', 'GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map(m => el('option', { value: m }, m || 'any method')));
+  const vPath = el('input', { placeholder: '/users/{id}  or  /users/42' });
+  const vBodyMode = el('select', {}, [['', 'any body'], ['json', 'JSON contains'], ['contains', 'text contains'], ['equals', 'text equals'], ['regex', 'regex']]
+    .map(([v, t]) => el('option', { value: v }, t)));
+  const vBody = el('input', { placeholder: '{"name":"ann"}' });
+  const vCountMode = el('select', {}, [['atLeast', 'at least'], ['exactly', 'exactly'], ['atMost', 'at most']]
+    .map(([v, t]) => el('option', { value: v }, t)));
+  const vCount = el('input', { type: 'number', min: '0', value: '1', style: 'max-width:80px' });
+  const vOut = el('pre', {}, 'The verdict appears here. The same check is available to tests: POST /api/projects/' + project.id + '/verify');
+  const runVerify = async () => {
+    const req = {};
+    if (vMethod.value) req.method = vMethod.value;
+    if (vPath.value.trim()) req.path = vPath.value.trim();
+    req[vCountMode.value] = Number(vCount.value);
+    if (vBodyMode.value) {
+      try { req.body = { [vBodyMode.value]: vBodyMode.value === 'json' ? JSON.parse(vBody.value) : vBody.value }; }
+      catch (e) { vOut.textContent = `Body is not valid JSON: ${e.message}`; return; }
+    }
+    try {
+      const res = await api(`/api/projects/${project.id}/verify`, { method: 'POST', body: JSON.stringify(req) });
+      let text = `${res.passed ? '✔ PASS' : '✘ FAIL'}  ${res.message}\n(${res.examined} recorded call(s) checked)`;
+      for (const c of res.closest || []) text += `\n\nclosest: ${c.call.method} ${c.call.path}\n  - ${c.mismatches.join('\n  - ')}`;
+      vOut.textContent = text;
+    } catch (e) { vOut.textContent = e.message; }
+  };
+  panel.appendChild(el('div', { class: 'card' }, [
+    el('div', { class: 'flex-between' }, [
+      el('h3', {}, 'Test Assertions'),
+      el('button', { class: 'btn btn-secondary btn-sm', onclick: async () => {
+        await api(`/api/projects/${project.id}/calls`, { method: 'DELETE' });
+        vOut.textContent = 'Recorded calls cleared (the request log below is unchanged).';
+      } }, 'Clear recorded calls'),
+    ]),
+    el('p', { class: 'muted' }, 'Ask whether the mock was called a certain way, for example after a test ran. The latest 1000 calls of the project are kept in memory with their bodies.'),
+    el('div', { class: 'row' }, [vMethod, vPath]),
+    el('div', { class: 'row' }, [vBodyMode, vBody]),
+    el('div', { class: 'row' }, [vCountMode, vCount, el('button', { class: 'btn btn-secondary', onclick: runVerify }, 'Check')]),
+    vOut,
+  ]));
+
   // ---- live request log ----
   const body = el('tbody', {});
   const status = el('span', { class: 'live-status' }, 'connecting…');

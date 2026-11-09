@@ -356,6 +356,41 @@ desktop, in Docker, and in Kubernetes.
        Metrics are not shipped: scrape `/metrics` with Prometheus.
      Logs, stream, detail and stats need the viewer role once a project has
      tokens; share links cannot read them.
+   - **Test assertions.** Tests can ask the mock what their service sent it.
+     `POST /api/projects/{id}/verify` checks the recorded calls (REST, GraphQL,
+     MCP, auth rejections) against a description and answers `200` with
+     `passed`, `count`, a one-line `message`, the `matches` (with request and
+     response bodies, newest first) and, when nothing matched, the `closest`
+     calls with what differed. Add `?strict=true` to get `409` on a failed
+     check, so a plain `curl --fail` can fail a test.
+     ```json
+     {"method": "POST", "path": "/users/{id}", "query": {"dry": "true"},
+      "headers": {"X-Trace": "t-1"}, "status": 201,
+      "body": {"json": {"name": "ann"}}, "exactly": 1}
+     ```
+     - *What matches:* `method`, `path` (segments written `{id}` or `*` match
+       anything), `endpoint` (the contract operation: `/users/{id}`,
+       `graphql`, or the MCP method), `query` and `headers` (all listed pairs
+       must be present; names are case-insensitive), `status`, and `body` with
+       exactly one of `equals`, `contains`, `regex` or `json`. A `json` body
+       matches when the logged body holds at least those properties; arrays
+       must have the same length and matching elements.
+     - *How often:* `atLeast`, `atMost` or `exactly` (`exactly: 0` means
+       "never"); the default is at least once. `since` (RFC 3339) or `sinceId`
+       (a log id) limit the check to later calls.
+     - *Isolation:* `DELETE /api/projects/{id}/calls` forgets the recorded calls
+       (editor role) so the next test starts clean; the request log and hit
+       counts are not touched. `GET /api/projects/{id}/calls?limit=` lists
+       them with bodies.
+     - *Limits:* the latest 1000 calls per project are kept **in memory** (not
+       in `db.json`, gone after a restart, in local and distributed mode
+       alike). Body and header checks need body capture (`LOG_CAPTURE_BODIES`,
+       default on; the check is refused when it is off) and see only what was
+       captured: bodies are cut at `LOG_CAPTURE_MAX_BYTES`, binary bodies can
+       not be matched, and `Authorization`, cookie and API-key headers are
+       redacted. gRPC calls are recorded under `/package.Service/Method` with
+       the request message as JSON, so `json` body checks work for them.
+       Viewers may verify.
    - **Import and export.** `Import…` in the sidebar (or `POST /api/import`,
      the file as the request body or a multipart `file` field, optional
      `?name=`, up to 32 MB) creates a new project from:

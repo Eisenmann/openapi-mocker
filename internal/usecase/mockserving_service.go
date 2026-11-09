@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -422,7 +423,7 @@ func (s *MockServingService) finish(projectID string, sv *served, resp *MockResp
 	took := time.Since(sv.start).Milliseconds() + int64(resp.DelayMs)
 
 	s.logs.Add(&domain.RequestLog{
-		ID: "", ProjectID: projectID, Method: sv.req.Method, Path: sv.req.Path,
+		ID: "", ProjectID: projectID, Method: sv.req.Method, Path: sv.req.Path, Query: url.Values(sv.req.Query).Encode(),
 		StatusCode: resp.StatusCode, MatchedRule: resp.MatchedRule, Matched: resp.Matched,
 		Timestamp: time.Now().UTC(), DurationMs: took,
 		Violations: resp.Violations, Fault: resp.Fault, Source: resp.Source,
