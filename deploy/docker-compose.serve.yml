@@ -1,0 +1,14 @@
+# A throw-away mock of one contract file, for local runs and CI pipelines:
+#
+#   SPEC=./openapi.yaml docker compose -f deploy/docker-compose.serve.yml up --wait
+#
+# The mock answers on http://localhost:8080; "--wait" returns once the health
+# check passes. Nothing is stored between runs.
+services:
+  mock:
+    image: ${MOCKER_IMAGE:-openapi-mocker:latest}
+    command: ["serve", "/spec/spec"]
+    ports:
+      - "8080:8080"
+    volumes:
+      - ${SPEC:?set SPEC to the contract file}:/spec/spec:ro
