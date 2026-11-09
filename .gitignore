@@ -33,3 +33,6 @@ lint_err.txt
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Release archives built by deploy/release-build.sh
+/dist/
