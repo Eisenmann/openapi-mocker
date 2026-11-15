@@ -72,6 +72,12 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go build ./...
+      - name: go install produces an openapi-mocker binary
+        run: |
+          GOBIN="$RUNNER_TEMP/bin" go install ./cmd/openapi-mocker
+          "$RUNNER_TEMP/bin/openapi-mocker" version
+      - name: Homebrew and Scoop renderers
+        run: bash deploy/packaging/test.sh
       - uses: docker/build-push-action@v6
         with:
           context: .

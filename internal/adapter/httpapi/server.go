@@ -1,6 +1,6 @@
 // Package httpapi is the interface adapter that translates HTTP requests
 // into calls to usecase services and back to JSON responses. It is the only
-// package in the application (besides cmd/server and adapter/webui) that
+// package in the application (besides cmd/openapi-mocker and adapter/webui) that
 // imports net/http — neither domain nor usecase knows anything about HTTP.
 package httpapi
 
@@ -18,7 +18,7 @@ import (
 )
 
 // Services is all the usecase services needed by the HTTP layer. They are
-// assembled in the composition root (cmd/server/main.go) from concrete adapters.
+// assembled in the composition root (cmd/openapi-mocker/main.go) from concrete adapters.
 // CodeGenAgentPort is the interface the HTTP layer needs from the
 // code generation agent. It is implemented by *agents.CodeGenerationAgent.
 type CodeGenAgentPort interface {

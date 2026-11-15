@@ -23,6 +23,7 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Getting started:
+      - Installation: installation.md
       - Quick start: quickstart.md
       - Deployment and releases: deployment.md
   - Guides:
@@ -38,3 +39,5 @@ nav:
   - Reference:
       - REST API: rest-api.md
       - Known limitations: limitations.md
+  - Maintainers:
+      - Releasing: releasing.md

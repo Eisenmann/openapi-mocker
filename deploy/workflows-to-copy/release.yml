@@ -3,7 +3,9 @@ name: Release
 # Runs when a tag vX.Y.Z is pushed, which includes creating a release with a
 # new tag in the GitHub UI. It builds the binaries and attaches them, with a
 # checksum file, to the release (created here when it does not exist yet).
-# The container image is published by docker-publish.yml on the same tag.
+# The container image is published by docker-publish.yml on the same tag. The
+# packages job then updates the Homebrew tap and the Scoop bucket when the
+# PACKAGES_TOKEN secret is set (see docs/releasing.md).
 on:
   push:
     tags: ["v*.*.*"]
@@ -88,3 +90,26 @@ jobs:
             case "$TAG" in *-*) args+=(--prerelease) ;; esac
             gh release create "$TAG" assets/* "${args[@]}"
           fi
+
+  packages:
+    name: Homebrew tap and Scoop bucket
+    needs: release
+    # Pre-releases (v1.3.0-rc.1 and the like) are not offered by the package managers.
+    if: ${{ !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    env:
+      PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update the tap and the bucket
+        if: ${{ env.PACKAGES_TOKEN != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern checksums.txt --dir assets
+          bash deploy/packaging/publish.sh "${TAG#v}" assets/checksums.txt
+      - name: Skipped
+        if: ${{ env.PACKAGES_TOKEN == '' }}
+        run: echo "::notice::PACKAGES_TOKEN is not set, so the Homebrew tap and the Scoop bucket were not updated."

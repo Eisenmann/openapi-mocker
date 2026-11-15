@@ -20,7 +20,7 @@ rm -rf "dist/$name"
 mkdir -p "dist/$name"
 
 CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
-  go build -trimpath -ldflags "-s -w -X main.version=${version}" -o "dist/$name/$bin" ./cmd/server
+  go build -trimpath -ldflags "-s -w -X main.version=${version}" -o "dist/$name/$bin" ./cmd/openapi-mocker
 
 cp README.md LICENSE "dist/$name/"
 cp -r examples "dist/$name/examples"

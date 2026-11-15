@@ -1,12 +1,12 @@
 # Deployment and releases
 
-Docker and the headless `serve` mode are covered in the [quick start](quickstart.md).
+Ways to install the binary are on the [installation](installation.md) page; Docker and the headless `serve` mode are covered in the [quick start](quickstart.md). How a release is cut is in [Releasing](releasing.md).
 
 ## Releases
 
 Pushing a tag `vX.Y.Z` (or creating a release with a new tag in GitHub) runs
 `.github/workflows/release.yml`, which tests the code, builds the binaries and
-attaches them to the GitHub release together with `checksums.txt`:
+attaches them to the GitHub release together with `checksums.txt`. It then updates the Homebrew tap and the Scoop bucket:
 
 | OS | Architectures | Archive |
 | --- | --- | --- |

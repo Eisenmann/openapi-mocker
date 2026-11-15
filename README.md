@@ -20,11 +20,13 @@ docker run -p 8080:8080 -v mocker-data:/data ghcr.io/eisenmann/openapi-mocker:la
 # UI: http://localhost:8080
 ```
 
-From source (Go 1.26 or newer):
+Or install the binary (see [Installation](docs/installation.md) for all options):
 
 ```bash
-go run ./cmd/server
-# UI: http://localhost:8080
+brew install Eisenmann/tap/openapi-mocker                                  # macOS, Linux
+scoop bucket add eisenmann https://github.com/Eisenmann/scoop-bucket && scoop install openapi-mocker   # Windows
+go install github.com/Eisenmann/openapi-mocker/cmd/openapi-mocker@latest   # Go 1.26+
+openapi-mocker                                                             # UI: http://localhost:8080
 ```
 
 Serve one contract file with no UI and nothing left behind, for example in CI:
@@ -34,7 +36,7 @@ openapi-mocker serve examples/simple-contract.yaml
 curl http://localhost:8080/users/1
 ```
 
-More options (Compose, Kubernetes, release binaries, the CI image):
+More options (Compose, Kubernetes, the CI image):
 [Quick start](docs/quickstart.md) and [Deployment](docs/deployment.md).
 
 ## What is inside
@@ -82,7 +84,7 @@ golangci-lint run
 
 The code follows a clean-architecture layout: `internal/domain` and
 `internal/usecase` know nothing about HTTP, files or LLM providers, which live
-in `internal/adapter/*`; `cmd/server` is the only place where they are wired
+in `internal/adapter/*`; `cmd/openapi-mocker` is the only place where they are wired
 together. To preview the docs locally:
 `pip install mkdocs-material && mkdocs serve`.
 
