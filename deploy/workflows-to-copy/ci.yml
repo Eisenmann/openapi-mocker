@@ -76,6 +76,18 @@ jobs:
         run: |
           GOBIN="$RUNNER_TEMP/bin" go install ./cmd/openapi-mocker
           "$RUNNER_TEMP/bin/openapi-mocker" version
+      - name: Quickstart (serve --demo) works
+        run: |
+          "$RUNNER_TEMP/bin/openapi-mocker" serve --demo --port 18080 &
+          pid=$!
+          for _ in $(seq 1 50); do curl -fs localhost:18080/healthz >/dev/null && break; sleep 0.2; done
+          curl -fs localhost:18080/pets | grep -q '"Rex"'
+          curl -fs -H 'Content-Type: application/json' localhost:18080/pets -d '{"name":"Bella"}' | grep -q '"id":4'
+          curl -fs localhost:18080/pets/4 | grep -q '"Bella"'
+          curl -fs -H 'Content-Type: application/json' \
+            'localhost:18080/__mocker/api/projects/default/verify?strict=true' \
+            -d '{"method":"POST","path":"/pets","exactly":1}' >/dev/null
+          kill "$pid"
       - name: Homebrew and Scoop renderers
         run: bash deploy/packaging/test.sh
       - uses: docker/build-push-action@v6

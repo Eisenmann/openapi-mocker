@@ -28,6 +28,8 @@ func exampleFromSchema(schemaRef *openapi3.SchemaRef, depth int) interface{} {
 	}
 
 	switch {
+	case len(s.AllOf) > 0 || len(s.OneOf) > 0 || len(s.AnyOf) > 0:
+		return exampleFromComposed(s, depth)
 	case len(s.Properties) > 0 || s.Type.Is("object"):
 		obj := map[string]interface{}{}
 		for name, propRef := range s.Properties {
@@ -52,6 +54,56 @@ func exampleFromSchema(schemaRef *openapi3.SchemaRef, depth int) interface{} {
 	}
 
 	return nil
+}
+
+// exampleFromComposed builds the example of a schema that is composed of other
+// schemas: its own properties plus every allOf part and the first option of
+// oneOf and anyOf, merged into one object. When the parts are not objects (for
+// example a string with extra constraints), the first value that can be built
+// is used.
+func exampleFromComposed(s *openapi3.Schema, depth int) interface{} {
+	obj := map[string]interface{}{}
+
+	for name, propRef := range s.Properties {
+		obj[name] = exampleFromSchema(propRef, depth+1)
+	}
+
+	parts := append([]*openapi3.SchemaRef{}, s.AllOf...)
+
+	if len(s.OneOf) > 0 {
+		parts = append(parts, s.OneOf[0])
+	}
+
+	if len(s.AnyOf) > 0 {
+		parts = append(parts, s.AnyOf[0])
+	}
+
+	var scalar interface{}
+
+	for _, part := range parts {
+		value := exampleFromSchema(part, depth+1)
+
+		fields, isObject := value.(map[string]interface{})
+		if !isObject {
+			if scalar == nil {
+				scalar = value
+			}
+
+			continue
+		}
+
+		for name, v := range fields {
+			if _, exists := obj[name]; !exists {
+				obj[name] = v
+			}
+		}
+	}
+
+	if len(obj) == 0 && scalar != nil {
+		return scalar
+	}
+
+	return obj
 }
 
 func exampleString(format string) string {

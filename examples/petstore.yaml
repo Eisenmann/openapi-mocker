@@ -1,0 +1,150 @@
+openapi: 3.0.3
+info:
+  title: Petstore
+  description: >
+    A small pet store API for trying OpenAPI Mocker. Run
+    `openapi-mocker serve --demo` (or `serve examples/petstore.yaml`) and call it.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+paths:
+  /pets:
+    get:
+      operationId: listPets
+      summary: List the pets
+      tags: [pets]
+      parameters:
+        - name: limit
+          in: query
+          description: How many pets to return at most
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        "200":
+          description: The pets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Pet"
+    post:
+      operationId: createPet
+      summary: Add a pet
+      tags: [pets]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewPet"
+      responses:
+        "201":
+          description: The pet that was added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pet"
+        "400":
+          description: The pet is not valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /pets/{petId}:
+    parameters:
+      - name: petId
+        in: path
+        required: true
+        description: The id of the pet
+        schema:
+          type: integer
+          format: int64
+    get:
+      operationId: getPet
+      summary: Get one pet
+      tags: [pets]
+      responses:
+        "200":
+          description: The pet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pet"
+        "404":
+          description: There is no such pet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    put:
+      operationId: replacePet
+      summary: Replace a pet
+      tags: [pets]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewPet"
+      responses:
+        "200":
+          description: The pet after the change
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pet"
+        "404":
+          description: There is no such pet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      operationId: deletePet
+      summary: Remove a pet
+      tags: [pets]
+      responses:
+        "204":
+          description: The pet was removed
+        "404":
+          description: There is no such pet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  schemas:
+    NewPet:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          example: Rex
+        tag:
+          type: string
+          example: dog
+        status:
+          type: string
+          enum: [available, pending, sold]
+          example: available
+    Pet:
+      allOf:
+        - $ref: "#/components/schemas/NewPet"
+        - type: object
+          required: [id]
+          properties:
+            id:
+              type: integer
+              format: int64
+              example: 1
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          example: "resource not found: /pets/1"

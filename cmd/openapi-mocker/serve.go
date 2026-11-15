@@ -14,16 +14,26 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Eisenmann/openapi-mocker/examples"
 	"github.com/Eisenmann/openapi-mocker/internal/domain"
+	"github.com/Eisenmann/openapi-mocker/internal/usecase"
 )
 
-const serveUsage = `Usage: openapi-mocker serve SPEC [--port N] [--validation MODE] [--watch] [--data-dir DIR]
+const serveUsage = `Usage: openapi-mocker serve SPEC [--port N] [--validation MODE] [--stateful]
+                            [--watch] [--data-dir DIR]
+       openapi-mocker serve --demo [--port N]
 
 Serves one contract file as a mock server, with no web UI and nothing to set
 up first. SPEC is an OpenAPI (YAML or JSON), GraphQL, MCP or .proto file.
 
   openapi-mocker serve spec.yaml
   curl http://localhost:8080/users/1
+
+With no file at hand, --demo serves a built-in Petstore with three pets that
+you can add to, change and remove.
+
+  openapi-mocker serve --demo
+  curl http://localhost:8080/pets
 
 The operations are served at the root of the server. Reserved paths:
 /healthz (health check) and /__mocker (management API, for example
@@ -33,6 +43,9 @@ mock, and /__mocker/metrics). The project is called "default" there.
   --port N             port to listen on (default: $PORT, else 8080)
   --validation MODE    check requests against the contract: off (default),
                        warn or enforce
+  --stateful           let POST, PUT, PATCH and DELETE change what later GETs
+                       return (kept in memory, or saved in --data-dir)
+  --demo               serve the built-in Petstore, stateful, instead of SPEC
   --watch              reload SPEC when the file changes
   --data-dir DIR       keep the project in DIR between runs; by default it
                        lives in a temporary directory that is removed on exit
@@ -67,12 +80,16 @@ type serveOptions struct {
 	dataDir    string
 	validation string
 	watch      bool
+	stateful   bool
+	demo       bool
 }
 
 // parseServeArgs reads the arguments; flags may stand anywhere and take their
 // value as "--port 9090" or "--port=9090".
 func parseServeArgs(args []string) (serveOptions, error) {
-	opts := serveOptions{spec: "", port: getEnv("PORT", "8080"), dataDir: "", validation: "", watch: false}
+	opts := serveOptions{
+		spec: "", port: getEnv("PORT", "8080"), dataDir: "", validation: "", watch: false, stateful: false, demo: false,
+	}
 
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -89,8 +106,7 @@ func parseServeArgs(args []string) (serveOptions, error) {
 
 		name, value, hasValue := strings.Cut(arg, "=")
 
-		if name == "--watch" {
-			opts.watch = true
+		if setServeSwitch(&opts, name) {
 			continue
 		}
 
@@ -115,6 +131,22 @@ func parseServeArgs(args []string) (serveOptions, error) {
 	return opts, err
 }
 
+// setServeSwitch handles the flags that take no value and reports whether name was one.
+func setServeSwitch(opts *serveOptions, name string) bool {
+	switch name {
+	case "--watch":
+		opts.watch = true
+	case "--stateful":
+		opts.stateful = true
+	case "--demo":
+		opts.demo = true
+	default:
+		return false
+	}
+
+	return true
+}
+
 func setServeFlag(opts *serveOptions, name, value string) error {
 	switch name {
 	case "--port":
@@ -130,9 +162,24 @@ func setServeFlag(opts *serveOptions, name, value string) error {
 	return nil
 }
 
+// validateSource checks that exactly one of a spec file and --demo was given.
+func (o *serveOptions) validateSource() error {
+	switch {
+	case o.demo && o.spec != "":
+		return fmt.Errorf("%w: --demo serves the built-in Petstore, so give no spec file", errServeUsage)
+	case o.demo && o.watch:
+		return fmt.Errorf("%w: --watch needs a spec file, not --demo", errServeUsage)
+	case !o.demo && o.spec == "":
+		return fmt.Errorf("%w: give the spec file to serve, or use --demo", errServeUsage)
+	}
+
+	return nil
+}
+
 func (o *serveOptions) validate() error {
-	if o.spec == "" {
-		return fmt.Errorf("%w: give the spec file to serve", errServeUsage)
+	err := o.validateSource()
+	if err != nil {
+		return err
 	}
 
 	port, err := strconv.Atoi(o.port)
@@ -161,11 +208,28 @@ func runServe(args []string, stderr io.Writer) int {
 	return serveSpec(ctx, &opts, stderr)
 }
 
+// demoLabel stands for the spec in messages when --demo serves the built-in one.
+const demoLabel = "the built-in Petstore"
+
+// loadServeSpec returns the contract to serve and how to call it in messages.
+func loadServeSpec(opts *serveOptions) (raw, label string, err error) {
+	if opts.demo {
+		return examples.Petstore, demoLabel, nil
+	}
+
+	data, err := os.ReadFile(opts.spec) //nolint:gosec // G703: the path is the command's argument.
+	if err != nil {
+		return "", "", fmt.Errorf("read spec: %w", err)
+	}
+
+	return string(data), opts.spec, nil
+}
+
 // serveSpec serves the spec until ctx ends.
 func serveSpec(ctx context.Context, opts *serveOptions, stderr io.Writer) int {
-	raw, err := os.ReadFile(opts.spec) //nolint:gosec // G703: the path is the command's argument.
+	raw, label, err := loadServeSpec(opts)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "serve: read spec: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "serve: %v\n", err)
 		return exitUsage
 	}
 
@@ -189,13 +253,19 @@ func serveSpec(ctx context.Context, opts *serveOptions, stderr io.Writer) int {
 	}
 
 	//nolint:contextcheck // publishing is a quick synchronous call.
-	projectID, err := bootstrapSpec(a, string(raw), opts.validation)
+	projectID, err := bootstrapSpec(a, raw, opts.validation)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "serve: %v\n", err)
 		return exitUsage
 	}
 
-	printBanner(stderr, a, opts, projectID)
+	err = applyState(a, projectID, opts)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "serve: %v\n", err)
+		return exitIOFailure
+	}
+
+	printBanner(stderr, a, opts, label, projectID)
 
 	if opts.watch {
 		go watchSpec(ctx, a, opts.spec, projectID, stderr)
@@ -210,6 +280,30 @@ func serveSpec(ctx context.Context, opts *serveOptions, stderr io.Writer) int {
 	}
 
 	return exitOK
+}
+
+// applyState turns on mock state for --stateful and --demo. State lives in
+// memory, or in the data directory when --data-dir keeps the project.
+func applyState(a *app, projectID string, opts *serveOptions) error {
+	if !opts.stateful && !opts.demo {
+		return nil
+	}
+
+	mode := domain.StateMemory
+	if opts.dataDir != "" {
+		mode = domain.StatePersisted
+	}
+
+	_, err := a.services.Projects.SetStateMode(projectID, mode)
+	if err != nil {
+		return fmt.Errorf("set state mode: %w", err)
+	}
+
+	if opts.demo {
+		return seedDemo(a, projectID)
+	}
+
+	return nil
 }
 
 // bootstrapSpec makes sure the project exists and serves raw, and returns its id.
@@ -262,10 +356,10 @@ func publishSpec(a *app, projectID, raw string) error {
 	return nil
 }
 
-func printBanner(w io.Writer, a *app, opts *serveOptions, projectID string) {
+func printBanner(w io.Writer, a *app, opts *serveOptions, label, projectID string) {
 	base := "http://localhost:" + opts.port
 
-	_, _ = fmt.Fprintf(w, "openapi-mocker %s serving %s on %s\n", version, opts.spec, base)
+	_, _ = fmt.Fprintf(w, "openapi-mocker %s serving %s on %s\n", version, label, base)
 	_, _ = fmt.Fprintf(w, "  health: %s/healthz\n  management API: %s%s/api/projects/%s/...\n",
 		base, base, adminPrefix, projectAlias)
 
@@ -282,6 +376,28 @@ func printBanner(w io.Writer, a *app, opts *serveOptions, projectID string) {
 
 		_, _ = fmt.Fprintf(w, "  %-7s %s\n", e.Method, e.Path)
 	}
+
+	if opts.stateful || opts.demo {
+		_, _ = fmt.Fprintf(w, "  stateful: POST, PUT, PATCH and DELETE change what later GETs return\n")
+	}
+
+	if try := tryItCommand(endpoints, base); try != "" {
+		_, _ = fmt.Fprintf(w, "\nTry it:  %s\n", try)
+	}
+
+	_, _ = fmt.Fprintf(w, "Press Ctrl+C to stop.\n")
+}
+
+// tryItCommand is a curl line for the first GET operation that needs no path
+// parameters; "" when the contract has none.
+func tryItCommand(endpoints []usecase.Endpoint, base string) string {
+	for _, e := range endpoints {
+		if e.Method == http.MethodGet && !strings.ContainsAny(e.Path, "{}") && strings.HasPrefix(e.Path, "/") {
+			return "curl " + base + e.Path
+		}
+	}
+
+	return ""
 }
 
 // watchSpec republishes the spec whenever the file changes. A change that does
