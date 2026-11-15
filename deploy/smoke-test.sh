@@ -35,4 +35,8 @@ curl -fsS -X POST "$base/__mocker/api/projects/default/verify?strict=true" \
   -H 'Content-Type: application/json' \
   -d '{"method":"GET","path":"/ping","exactly":1}' >/dev/null
 
+# A 10-second load run from inside the container; a failed threshold fails the script.
+docker exec "$name" /app/openapi-mocker load run /specs/load-smoke.yaml --out /tmp/load-report --quiet >/dev/null
+docker exec "$name" test -s /tmp/load-report/report.html
+
 echo "smoke test passed: $image"

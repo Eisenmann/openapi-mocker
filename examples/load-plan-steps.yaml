@@ -1,0 +1,51 @@
+# A plan with hand-written steps, a data feeder, extraction and think time.
+name: checkout flow
+target:
+  baseUrl: https://staging.example.com
+  allowHosts: [staging.example.com, "*.internal.example.com"]
+  http: {protocol: http2, timeout: 15s}
+  auth: {type: bearer, ref: STAGING_TOKEN}   # name of a secret, never the secret itself
+
+data:
+  users:
+    file: users.csv        # header row = column names; format from the extension
+    mode: unique           # sequential | random | unique
+
+scenarios:
+  buy:
+    weight: 1
+    steps:
+      - name: login
+        method: POST
+        path: /login
+        headers: {Content-Type: application/json}
+        body: {email: "{{data.users.email}}", password: "{{data.users.password}}"}
+        checks: ["status == 200", "$.token exists"]
+        extract: {token: $.token}
+      - name: create order
+        method: POST
+        path: /orders
+        headers: {Authorization: "Bearer {{vars.token}}"}
+        body: '{"sku": "{{faker.pick a1 b2 c3}}", "qty": {{faker.int 1 5}}}'
+        checks: ["status in [200, 201]", "$.id exists", "latency < 1s"]
+        extract: {orderId: $.id}
+        think: {kind: lognormal, mean: 1s, stdDev: 300ms}
+      - name: read order
+        method: GET
+        path: /orders/{{vars.orderId}}
+        checks: ["status == 200", "$.status == \"NEW\""]
+        think: 500ms
+
+load:
+  model: closed
+  stages:
+    - {duration: 30s, vus: 20}
+    - {duration: 2m, vus: 20}
+    - {duration: 10s, vus: 0}
+
+thresholds:
+  - http.latency.p95{operation=create order} < 800ms
+  - checks.rate > 99%
+  - throughput.rps > 20
+
+outputs: [html, json]

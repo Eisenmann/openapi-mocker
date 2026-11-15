@@ -53,6 +53,10 @@ type Services struct {
 	// Access manages API tokens, share links and the audit log; nil turns
 	// access control off.
 	Access *usecase.AccessService
+	// LoadPlans and LoadRuns serve the load testing API; both nil leave it
+	// disabled.
+	LoadPlans *usecase.LoadPlanService
+	LoadRuns  *usecase.LoadRunService
 }
 
 type api struct {

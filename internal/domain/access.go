@@ -13,6 +13,9 @@ type Role string
 const (
 	// RoleViewer may read the project.
 	RoleViewer Role = "viewer"
+	// RoleLoadRunner may read the project and run load tests, also against
+	// external targets; it cannot change contracts, mocks or settings.
+	RoleLoadRunner Role = "load-runner"
 	// RoleEditor may also change contracts, mocks, state and auth settings.
 	RoleEditor Role = "editor"
 	// RoleAdmin may also manage tokens and share links and change or delete
@@ -34,10 +37,12 @@ func (r Role) rank() int {
 	switch r {
 	case RoleViewer:
 		return 1
+	case RoleLoadRunner:
+		return 2 //nolint:mnd // viewer < load-runner < editor < admin.
 	case RoleEditor:
-		return 2 //nolint:mnd // viewer < editor < admin.
+		return 3 //nolint:mnd // viewer < load-runner < editor < admin.
 	case RoleAdmin:
-		return 3 //nolint:mnd // viewer < editor < admin.
+		return 4 //nolint:mnd // viewer < load-runner < editor < admin.
 	default:
 		return 0
 	}

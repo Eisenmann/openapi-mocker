@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -30,6 +31,8 @@ type app struct {
 	// grpc is nil when the gRPC listener is not configured.
 	grpc     *http.Server
 	exporter *usecase.LogExporter
+	// loadRuns is nil in a lite app; the server stops its runs on shutdown.
+	loadRuns *usecase.LoadRunService
 }
 
 // buildApp wires the application on top of dataDir. A lite app (the serve
@@ -103,11 +106,23 @@ func buildApp(dataDir string, lite bool) (*app, error) {
 		services.CodeGenAgent = codeGenAgent
 	}
 
+	// Load testing is part of the full server only: a lite app serves the mock at the root.
+	var loadRuns *usecase.LoadRunService
+
+	if !lite {
+		ls, loadErr := newLoadServices(context.Background(), dataDir, store, contractEngine)
+		if loadErr != nil {
+			return nil, loadErr
+		}
+
+		services.LoadPlans, services.LoadRuns, loadRuns = ls.plans, ls.runs, ls.runs
+	}
+
 	grpcServer := setupGRPC(&services, store, protoEngine, mockServing, mockService)
 
 	// ---- Interface Adapter: HTTP controllers + routing ----.
 	return &app{
 		services: &services, handler: httpapi.NewRouter(&services), store: store,
-		grpc: grpcServer, exporter: logExporter,
+		grpc: grpcServer, exporter: logExporter, loadRuns: loadRuns,
 	}, nil
 }

@@ -205,7 +205,7 @@ function exportControl(project) {
 
 // ---------------- Access control and audit ----------------
 
-const ROLES = ['viewer', 'editor', 'admin'];
+const ROLES = ['viewer', 'load-runner', 'editor', 'admin'];
 
 function when(iso) { return iso ? new Date(iso).toLocaleString() : '-'; }
 

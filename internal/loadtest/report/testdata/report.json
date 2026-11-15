@@ -1,0 +1,502 @@
+{
+  "schemaVersion": 1,
+  "run": {
+    "id": "run_1",
+    "name": "pets <load> & test",
+    "target": "http://127.0.0.1:8080/mock/p1",
+    "state": "finished",
+    "verdict": "fail",
+    "actor": "ann",
+    "startedAt": "2026-01-02T03:04:05Z",
+    "finishedAt": "2026-01-02T03:04:17Z",
+    "durationSeconds": 12
+  },
+  "thresholds": [
+    {
+      "metric": "http.latency.p95",
+      "op": "<",
+      "value": 500,
+      "observed": 120.5,
+      "passed": true
+    },
+    {
+      "metric": "errors.rate",
+      "scope": "listPets",
+      "op": "<",
+      "value": 0.01,
+      "observed": 0.2,
+      "passed": false
+    },
+    {
+      "metric": "http.latency.p99",
+      "scope": "ghost",
+      "op": "<",
+      "value": 900,
+      "passed": false
+    }
+  ],
+  "totals": {
+    "requests": 10,
+    "errors": 2,
+    "errorRate": 0.2,
+    "checksPassed": 8,
+    "checksFailed": 2,
+    "contractViolations": 0,
+    "bytesIn": 1000,
+    "bytesOut": 0,
+    "throughputRps": 1,
+    "dropped": 1,
+    "warmupRequests": 3,
+    "measuredSeconds": 10
+  },
+  "latency": {
+    "min": 5,
+    "mean": 61,
+    "stdDev": 87.238,
+    "p50": 15.004,
+    "p75": 80.032,
+    "p90": 120.032,
+    "p95": 299.904,
+    "p99": 299.904,
+    "p999": 299.904,
+    "max": 300
+  },
+  "errors": {
+    "check_failed": 2,
+    "http_5xx": 2
+  },
+  "operations": [
+    {
+      "name": "getPet",
+      "requests": 4,
+      "errors": 0,
+      "errorRate": 0,
+      "contractViolations": 0,
+      "checksFailed": 0,
+      "latency": {
+        "min": 40,
+        "mean": 135,
+        "stdDev": 99.324,
+        "p50": 80.032,
+        "p75": 120.032,
+        "p90": 299.904,
+        "p95": 299.904,
+        "p99": 299.904,
+        "p999": 299.904,
+        "max": 300
+      }
+    },
+    {
+      "name": "listPets",
+      "requests": 6,
+      "errors": 2,
+      "errorRate": 0.333,
+      "contractViolations": 0,
+      "checksFailed": 2,
+      "errorsByClass": {
+        "check_failed": 2,
+        "http_5xx": 2
+      },
+      "latency": {
+        "min": 5,
+        "mean": 11.667,
+        "stdDev": 4.855,
+        "p50": 10.004,
+        "p75": 15.004,
+        "p90": 20,
+        "p95": 20,
+        "p99": 20,
+        "p999": 20,
+        "max": 20
+      }
+    }
+  ],
+  "steps": [
+    {
+      "name": "read/listPets",
+      "requests": 6,
+      "errors": 2,
+      "errorRate": 0.333,
+      "contractViolations": 0,
+      "checksFailed": 2,
+      "errorsByClass": {
+        "check_failed": 2,
+        "http_5xx": 2
+      },
+      "latency": {
+        "min": 5,
+        "mean": 11.667,
+        "stdDev": 4.855,
+        "p50": 10.004,
+        "p75": 15.004,
+        "p90": 20,
+        "p95": 20,
+        "p99": 20,
+        "p999": 20,
+        "max": 20
+      }
+    }
+  ],
+  "status": [
+    {
+      "code": 200,
+      "count": 3,
+      "latency": {
+        "min": 5,
+        "mean": 7.667,
+        "stdDev": 2.056,
+        "p50": 8.002,
+        "p75": 10,
+        "p90": 10,
+        "p95": 10,
+        "p99": 10,
+        "p999": 10,
+        "max": 10
+      }
+    },
+    {
+      "code": 500,
+      "count": 2,
+      "latency": {
+        "min": 120,
+        "mean": 210,
+        "stdDev": 89.936,
+        "p50": 120.032,
+        "p75": 299.904,
+        "p90": 299.904,
+        "p95": 299.904,
+        "p99": 299.904,
+        "p999": 299.904,
+        "max": 300
+      }
+    }
+  ],
+  "timings": [
+    {
+      "phase": "ttfb",
+      "count": 3,
+      "latency": {
+        "min": 2,
+        "mean": 3,
+        "stdDev": 0.817,
+        "p50": 3.001,
+        "p75": 4,
+        "p90": 4,
+        "p95": 4,
+        "p99": 4,
+        "p999": 4,
+        "max": 4
+      }
+    },
+    {
+      "phase": "download",
+      "count": 3,
+      "latency": {
+        "min": 1,
+        "mean": 1,
+        "stdDev": 0,
+        "p50": 1,
+        "p75": 1,
+        "p90": 1,
+        "p95": 1,
+        "p99": 1,
+        "p999": 1,
+        "max": 1
+      }
+    }
+  ],
+  "histogram": [
+    {
+      "upperMs": 0.141,
+      "count": 0
+    },
+    {
+      "upperMs": 0.2,
+      "count": 0
+    },
+    {
+      "upperMs": 0.283,
+      "count": 0
+    },
+    {
+      "upperMs": 0.4,
+      "count": 0
+    },
+    {
+      "upperMs": 0.566,
+      "count": 0
+    },
+    {
+      "upperMs": 0.8,
+      "count": 0
+    },
+    {
+      "upperMs": 1.131,
+      "count": 0
+    },
+    {
+      "upperMs": 1.6,
+      "count": 0
+    },
+    {
+      "upperMs": 2.263,
+      "count": 0
+    },
+    {
+      "upperMs": 3.2,
+      "count": 0
+    },
+    {
+      "upperMs": 4.525,
+      "count": 0
+    },
+    {
+      "upperMs": 6.4,
+      "count": 1
+    },
+    {
+      "upperMs": 9.051,
+      "count": 1
+    },
+    {
+      "upperMs": 12.8,
+      "count": 2
+    },
+    {
+      "upperMs": 18.102,
+      "count": 1
+    },
+    {
+      "upperMs": 25.6,
+      "count": 1
+    },
+    {
+      "upperMs": 36.204,
+      "count": 0
+    },
+    {
+      "upperMs": 51.2,
+      "count": 1
+    },
+    {
+      "upperMs": 72.408,
+      "count": 0
+    },
+    {
+      "upperMs": 102.4,
+      "count": 1
+    },
+    {
+      "upperMs": 144.815,
+      "count": 1
+    },
+    {
+      "upperMs": 204.8,
+      "count": 0
+    },
+    {
+      "upperMs": 289.631,
+      "count": 0
+    },
+    {
+      "upperMs": 409.6,
+      "count": 1
+    },
+    {
+      "upperMs": 579.262,
+      "count": 0
+    },
+    {
+      "upperMs": 819.2,
+      "count": 0
+    },
+    {
+      "upperMs": 1158.524,
+      "count": 0
+    },
+    {
+      "upperMs": 1638.4,
+      "count": 0
+    },
+    {
+      "upperMs": 2317.048,
+      "count": 0
+    },
+    {
+      "upperMs": 3276.8,
+      "count": 0
+    },
+    {
+      "upperMs": 4634.095,
+      "count": 0
+    },
+    {
+      "upperMs": 6553.6,
+      "count": 0
+    },
+    {
+      "upperMs": 9268.19,
+      "count": 0
+    },
+    {
+      "upperMs": 13107.2,
+      "count": 0
+    },
+    {
+      "upperMs": 18536.38,
+      "count": 0
+    },
+    {
+      "upperMs": 26214.4,
+      "count": 0
+    },
+    {
+      "upperMs": 37072.76,
+      "count": 0
+    },
+    {
+      "upperMs": 52428.8,
+      "count": 0
+    },
+    {
+      "upperMs": 74145.52,
+      "count": 0
+    },
+    {
+      "upperMs": 104857.6,
+      "count": 0
+    }
+  ],
+  "heatUpperMs": [
+    0.141,
+    0.2,
+    0.283,
+    0.4,
+    0.566,
+    0.8,
+    1.131,
+    1.6,
+    2.263,
+    3.2,
+    4.525,
+    6.4,
+    9.051,
+    12.8,
+    18.102,
+    25.6,
+    36.204,
+    51.2,
+    72.408,
+    102.4,
+    144.815,
+    204.8,
+    289.631,
+    409.6,
+    579.262,
+    819.2,
+    1158.524,
+    1638.4,
+    2317.048,
+    3276.8,
+    4634.095,
+    6553.6,
+    9268.19,
+    13107.2,
+    18536.38,
+    26214.4,
+    37072.76,
+    52428.8,
+    74145.52,
+    104857.6
+  ],
+  "series": [
+    {
+      "second": 0,
+      "warmup": true,
+      "requests": 3,
+      "errors": 0,
+      "inFlight": 0,
+      "p50": 5,
+      "p90": 8,
+      "p95": 9,
+      "p99": 10,
+      "max": 10,
+      "mean": 6,
+      "heat": [
+        0,
+        3
+      ]
+    },
+    {
+      "second": 1,
+      "requests": 7,
+      "errors": 2,
+      "errorsByClass": {
+        "http_5xx": 2
+      },
+      "inFlight": 2,
+      "p50": 12.346,
+      "p90": 0,
+      "p95": 0,
+      "p99": 0,
+      "max": 300,
+      "mean": 0,
+      "heat": [
+        1,
+        6
+      ]
+    }
+  ],
+  "health": [
+    {
+      "second": 1,
+      "cpuCores": 0.5,
+      "goroutines": 12,
+      "gcPauseMaxMs": 0,
+      "schedLatencyP99Ms": 0,
+      "lagMs": 1.5
+    }
+  ],
+  "generator": {
+    "untrustworthy": false,
+    "maxLagMs": 4
+  },
+  "slowest": [],
+  "firstFailed": [
+    {
+      "step": "read/listPets",
+      "operation": "GET /pets",
+      "status": 500,
+      "latencyMs": 120,
+      "errorClass": "http_5xx",
+      "detail": {
+        "method": "GET",
+        "url": "http://x/pets",
+        "requestHeaders": {
+          "Authorization": [
+            "[redacted]"
+          ]
+        },
+        "responseBody": "boom"
+      }
+    }
+  ],
+  "environment": {
+    "version": "test",
+    "goVersion": "go1.x",
+    "os": "linux",
+    "arch": "amd64",
+    "cpus": 4
+  },
+  "plan": {
+    "name": "pets <load> & test",
+    "target": {
+      "baseUrl": "mock://p1",
+      "http": {}
+    },
+    "scenarios": null,
+    "load": {
+      "kind": ""
+    }
+  }
+}
