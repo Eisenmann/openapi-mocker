@@ -87,7 +87,7 @@ func writeError(w http.ResponseWriter, defaultStatus int, err error) {
 		status = http.StatusNotFound
 	}
 
-	writeJSON(w, status, map[string]string{"error": err.Error()})
+	writeJSON(w, status, map[string]string{errorField: err.Error()})
 }
 
 func readJSON(r *http.Request, v interface{}) error {

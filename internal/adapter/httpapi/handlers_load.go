@@ -85,7 +85,7 @@ func writeLoadError(w http.ResponseWriter, err error) {
 		status = http.StatusBadRequest
 	}
 
-	writeJSON(w, status, map[string]string{"error": err.Error()})
+	writeJSON(w, status, map[string]string{errorField: err.Error()})
 }
 
 // loadActor is who made the request, for plan and run records.
@@ -229,7 +229,7 @@ func (a *api) getLoadPlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.URL.Query().Get("format") == "yaml" {
+	if r.URL.Query().Get("format") == formatYAML {
 		writePlanFile(w, p)
 
 		return
@@ -474,7 +474,7 @@ func (a *api) loadRunReport(w http.ResponseWriter, r *http.Request) {
 	data, err := a.s.LoadRuns.Artifact(r.Context(), r.PathValue("id"), r.PathValue("runId"), name)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": errNoReportYet.Error()})
+			writeJSON(w, http.StatusNotFound, map[string]string{errorField: errNoReportYet.Error()})
 
 			return
 		}

@@ -18,6 +18,9 @@ const (
 	exitUsage    = 2 // bad arguments, unreadable or invalid contracts.
 )
 
+// formatJSON is the name of the JSON output format of the commands.
+const formatJSON = "json"
+
 const diffUsage = `Usage: openapi-mocker diff OLD NEW [--fail-on-breaking] [--format text|json]
 
 Compares two OpenAPI contracts (YAML or JSON files) and lists the changes that
@@ -64,7 +67,7 @@ func parseDiffArgs(args []string) (diffOptions, error) {
 		i += used
 	}
 
-	if opts.format != "text" && opts.format != "json" {
+	if opts.format != "text" && opts.format != formatJSON {
 		return opts, fmt.Errorf("%w: --format must be text or json", errDiffUsage)
 	}
 
@@ -151,7 +154,7 @@ func runDiff(args []string, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 
-	if opts.format == "json" {
+	if opts.format == formatJSON {
 		err = writeDiffJSON(stdout, changes)
 	} else {
 		err = writeDiffText(stdout, &opts, changes)

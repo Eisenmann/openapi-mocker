@@ -190,7 +190,7 @@ func reportFormats(flagValue string, plan *domain.Plan) ([]domain.OutputFormat, 
 			names = append(names, string(o.Format))
 		}
 	default:
-		names = []string{"html", "json"}
+		names = []string{"html", formatJSON}
 	}
 
 	var out []domain.OutputFormat

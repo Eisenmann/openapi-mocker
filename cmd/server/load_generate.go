@@ -81,7 +81,7 @@ func runLoadGenerate(args []string, stdout, stderr io.Writer) int {
 }
 
 func checkGenerateArgs(opts *generateOptions, files []string) error {
-	if opts.format != "yaml" && opts.format != "json" {
+	if opts.format != "yaml" && opts.format != formatJSON {
 		return fmt.Errorf("%w: --format must be yaml or json", errLoadUsage)
 	}
 
@@ -125,7 +125,7 @@ func generatePlanFile(opts *generateOptions, files []string) ([]byte, error) {
 		return nil, fmt.Errorf("generate plan: %w", err)
 	}
 
-	if opts.format == "json" {
+	if opts.format == formatJSON {
 		return usecase.FormatPlanJSON(plan)
 	}
 

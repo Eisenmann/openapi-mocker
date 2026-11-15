@@ -17,6 +17,9 @@ import (
 	"github.com/Eisenmann/openapi-mocker/internal/usecase"
 )
 
+// pathBody is the path of a violation in the response body.
+const pathBody = "body"
+
 // ResponseValidator checks responses against a contract during a load test.
 // The contract is parsed once; ValidateResponse is safe for concurrent use.
 type ResponseValidator struct {
@@ -74,13 +77,13 @@ func (v *ResponseValidator) ValidateResponse(
 
 	if len(body) == 0 && declaresBody(resp) && statusHasBody(status, method) {
 		return []usecase.ContractViolation{{
-			Path: "body", Message: "response body is empty but the contract declares one",
+			Path: pathBody, Message: "response body is empty but the contract declares one",
 		}}, true
 	}
 
 	input, err := v.input(match, method, path, status, contentType, body)
 	if err != nil {
-		return []usecase.ContractViolation{{Path: "body", Message: "response cannot be validated: " + err.Error()}}, true
+		return []usecase.ContractViolation{{Path: pathBody, Message: "response cannot be validated: " + err.Error()}}, true
 	}
 
 	return responseViolations(openapi3filter.ValidateResponse(context.Background(), input)), true
@@ -183,7 +186,7 @@ func responseViolations(err error) []usecase.ContractViolation {
 	case *openapi3filter.ResponseError:
 		return describeResponseError(e)
 	default:
-		return []usecase.ContractViolation{{Path: "body", Message: firstLine(err.Error())}}
+		return []usecase.ContractViolation{{Path: pathBody, Message: firstLine(err.Error())}}
 	}
 }
 
@@ -203,7 +206,7 @@ func responseErrorPath(reason string) string {
 		return "content-type"
 	}
 
-	return "body"
+	return pathBody
 }
 
 func describeResponseCause(cause error, reason string) []usecase.ContractViolation {
