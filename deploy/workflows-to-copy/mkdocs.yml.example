@@ -1,0 +1,40 @@
+site_name: OpenAPI Mocker
+site_description: A self-contained mock server for OpenAPI, GraphQL, MCP and gRPC contracts.
+site_url: https://eisenmann.github.io/openapi-mocker/
+repo_url: https://github.com/Eisenmann/openapi-mocker
+repo_name: Eisenmann/openapi-mocker
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - content.code.copy
+
+markdown_extensions:
+  - tables
+  - admonition
+  - toc:
+      permalink: true
+  - pymdownx.superfences
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Quick start: quickstart.md
+      - Deployment and releases: deployment.md
+  - Guides:
+      - Contracts and mock data: contracts.md
+      - Mock behaviour: mock-behavior.md
+      - Streaming and gRPC: streaming-grpc.md
+      - Record & replay, drift: proxy-and-drift.md
+      - Auth and access: auth-and-access.md
+      - Observability and assertions: observability.md
+      - Import and export: import-export.md
+      - Load testing: load-testing.md
+      - Code generation: code-generation.md
+  - Reference:
+      - REST API: rest-api.md
+      - Known limitations: limitations.md
