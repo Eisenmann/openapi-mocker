@@ -2,9 +2,18 @@
 
 ## Desktop
 
+Install the binary with Homebrew, Scoop, `go install` or a release archive
+(see [Installation](installation.md)), then run it:
+
 ```bash
-go mod tidy   # requires network access - downloads kin-openapi
-go run ./cmd/server
+openapi-mocker
+# UI:  http://localhost:8080
+```
+
+From a source checkout:
+
+```bash
+go run ./cmd/openapi-mocker
 # UI:  http://localhost:8080
 ```
 

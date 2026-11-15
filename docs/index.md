@@ -20,7 +20,9 @@ openapi-mocker serve spec.yaml
 curl http://localhost:8080/users/1
 ```
 
-See the [quick start](quickstart.md) for the desktop, Docker and CI options.
+See [Installation](installation.md) for Homebrew, Scoop, `go install`, release
+archives and Docker, and the [quick start](quickstart.md) for the desktop,
+Docker and CI options.
 
 ## What it does
 
@@ -35,7 +37,7 @@ See the [quick start](quickstart.md) for the desktop, Docker and CI options.
 | Import / export | Postman, Insomnia, HAR, OpenAPI, Swagger, bundles | [Import and export](import-export.md) |
 | Load testing | plans, open and closed models, thresholds, HTML/JSON/JUnit/CSV reports | [Load testing](load-testing.md) |
 | Code generation | server skeletons and clients for Go, TypeScript, Python, Java, Rust and C# | [Code generation](code-generation.md) |
-| Operations | Docker, Kubernetes, release binaries | [Deployment](deployment.md) |
+| Operations | Homebrew, Scoop, `go install`, Docker, Kubernetes, release binaries | [Installation](installation.md), [Deployment](deployment.md) |
 
 Everything the UI does is also available over the [REST API](rest-api.md).
 Read [Known limitations](limitations.md) before you plan a production setup.

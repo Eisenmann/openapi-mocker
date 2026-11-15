@@ -5,7 +5,7 @@
 // never net/http, kin-openapi, or file storage directly. Concrete
 // implementations of the ports (JSON store, kin-openapi, HTTP clients for LLMs)
 // live in internal/adapter/* and are wired into the usecase layer in
-// cmd/server/main.go (the composition root) — this is dependency inversion.
+// cmd/openapi-mocker/main.go (the composition root) — this is dependency inversion.
 package usecase
 
 import (

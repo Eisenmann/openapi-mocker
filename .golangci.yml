@@ -194,7 +194,7 @@ linters:
       #   - usecase result/DTO structs omit fields meaning "empty/not
       #     applicable" for the response shape;
       #   - Engine/Store start with a zero-value mutex.
-      - path: (cmd/server|internal/adapter/(graphql|openapi|llm|repository/jsonstore))/
+      - path: (cmd/openapi-mocker|internal/adapter/(graphql|openapi|llm|repository/jsonstore))/
         linters:
           - exhaustruct_v5
       # Test files use partial struct literals for mocks/stubs and have
@@ -293,12 +293,12 @@ linters:
           - exhaustruct_v5
       # Configuration values (timeouts, limits, buffer sizes) are written
       # as literals at the composition root and in store internals.
-      - path: (cmd/server|internal/adapter/httpapi|internal/adapter/repository/jsonstore)/
+      - path: (cmd/openapi-mocker|internal/adapter/httpapi|internal/adapter/repository/jsonstore)/
         linters:
           - mnd
       # Inline error handling (`if err := ...; err != nil`) is idiomatic Go
       # and is preferred in this codebase for short handler bodies.
-      - path: (cmd/server|internal/adapter/(codegen|httpapi|openapi|repository/jsonstore))/
+      - path: (cmd/openapi-mocker|internal/adapter/(codegen|httpapi|openapi|repository/jsonstore))/
         linters:
           - noinlineerr
       # Whitespace style and method-ordering preferences are not enforced

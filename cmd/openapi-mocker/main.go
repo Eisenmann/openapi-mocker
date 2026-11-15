@@ -65,6 +65,8 @@ import (
 const shutdownGrace = 10 * time.Second
 
 func main() {
+	initVersion()
+
 	if len(os.Args) > 1 && os.Args[1] == "diff" {
 		os.Exit(runDiff(os.Args[2:], os.Stdout, os.Stderr))
 	}
@@ -86,7 +88,8 @@ func main() {
 	runServer()
 }
 
-// version is set at build time: -ldflags "-X main.version=1.2.3".
+// version is set at build time: -ldflags "-X main.version=1.2.3". Without it,
+// initVersion falls back to the module version of a "go install" build.
 var version = "dev"
 
 // runSubcommand runs the serve, healthcheck and version commands.
