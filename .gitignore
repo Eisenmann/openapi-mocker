@@ -36,3 +36,4 @@ lint_err.txt
 
 # Release archives built by deploy/release-build.sh
 /dist/
+/site/
