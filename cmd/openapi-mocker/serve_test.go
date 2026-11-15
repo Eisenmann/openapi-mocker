@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Eisenmann/openapi-mocker/internal/usecase"
 )
 
 const serveSpecYAML = `openapi: 3.0.0
@@ -79,8 +81,21 @@ func TestParseServeArgs(t *testing.T) {
 		t.Errorf("PORT default: %+v %v", opts, err)
 	}
 
+	opts, err = parseServeArgs([]string{"--demo", "--port=9002"})
+	if err != nil || !opts.demo || opts.spec != "" || opts.port != "9002" {
+		t.Errorf("--demo: %+v %v", opts, err)
+	}
+
+	opts, err = parseServeArgs([]string{"--stateful", "s.yaml"})
+	if err != nil || !opts.stateful || opts.spec != "s.yaml" {
+		t.Errorf("--stateful: %+v %v", opts, err)
+	}
+
 	for _, bad := range [][]string{
 		{},
+		{"--stateful"},
+		{"--demo", "s.yaml"},
+		{"--demo", "--watch"},
 		{"a", "b"},
 		{"a", "--port"},
 		{"a", "--port", "x"},
@@ -194,7 +209,7 @@ func fetch(t *testing.T, method, url, body string) (int, string) {
 }
 
 func TestServeSpec_ServesAndVerifies(t *testing.T) {
-	opts := &serveOptions{spec: tempSpec(t, serveSpecYAML), port: freePort(t), dataDir: "", validation: "", watch: false}
+	opts := &serveOptions{spec: tempSpec(t, serveSpecYAML), port: freePort(t), dataDir: "", validation: "", watch: false, stateful: false, demo: false}
 	base, stderr, stop := startServe(t, opts)
 
 	code, body := fetch(t, http.MethodPost, base+"/api/v1/ping", `{"a":1}`)
@@ -231,7 +246,7 @@ func TestServeSpec_ServesAndVerifies(t *testing.T) {
 
 func TestServeSpec_WatchReloads(t *testing.T) {
 	spec := tempSpec(t, serveSpecYAML)
-	opts := &serveOptions{spec: spec, port: freePort(t), dataDir: "", validation: "", watch: true}
+	opts := &serveOptions{spec: spec, port: freePort(t), dataDir: "", validation: "", watch: true, stateful: false, demo: false}
 	base, stderr, stop := startServe(t, opts)
 
 	if code, _ := fetch(t, http.MethodGet, base+"/added", ""); code == http.StatusOK {
@@ -285,7 +300,7 @@ func TestServeSpec_KeepsDataDir(t *testing.T) {
 	spec := tempSpec(t, serveSpecYAML)
 
 	for range 2 {
-		opts := &serveOptions{spec: spec, port: freePort(t), dataDir: dir, validation: "warn", watch: false}
+		opts := &serveOptions{spec: spec, port: freePort(t), dataDir: dir, validation: "warn", watch: false, stateful: false, demo: false}
 		_, _, stop := startServe(t, opts)
 
 		if exit := stop(); exit != exitOK {
@@ -303,7 +318,7 @@ func TestServeSpec_BadInputs(t *testing.T) {
 
 	var out syncBuffer
 
-	opts := &serveOptions{spec: filepath.Join(t.TempDir(), "missing.yaml"), port: "1", dataDir: "", validation: "", watch: false}
+	opts := &serveOptions{spec: filepath.Join(t.TempDir(), "missing.yaml"), port: "1", dataDir: "", validation: "", watch: false, stateful: false, demo: false}
 	if code := serveSpec(context.Background(), opts, &out); code != exitUsage {
 		t.Errorf("missing file = %d", code)
 	}
@@ -321,5 +336,115 @@ func TestRunServe_UsageError(t *testing.T) {
 
 	if code := runServe(nil, &out); code != exitUsage || !strings.Contains(out.String(), "Usage: openapi-mocker serve") {
 		t.Errorf("code=%d out=%s", code, out.String())
+	}
+}
+
+func TestServeSpec_DemoPetstore(t *testing.T) {
+	opts := &serveOptions{
+		spec: "", port: freePort(t), dataDir: "", validation: "", watch: false, stateful: false, demo: true,
+	}
+	base, stderr, stop := startServe(t, opts)
+
+	code, body := fetch(t, http.MethodGet, base+"/pets", "")
+	if code != http.StatusOK || strings.Count(body, `"name"`) != 3 || !strings.Contains(body, `"Rex"`) {
+		t.Fatalf("seeded pets: %d %s", code, body)
+	}
+
+	code, body = fetch(t, http.MethodPost, base+"/pets", `{"name":"Bella","tag":"dog"}`)
+	if code != http.StatusCreated || !strings.Contains(body, `"id":4`) {
+		t.Fatalf("add a pet: %d %s", code, body)
+	}
+
+	code, body = fetch(t, http.MethodGet, base+"/pets/4", "")
+	if code != http.StatusOK || !strings.Contains(body, `"Bella"`) {
+		t.Errorf("get the new pet: %d %s", code, body)
+	}
+
+	code, _ = fetch(t, http.MethodDelete, base+"/pets/1", "")
+	if code != http.StatusNoContent {
+		t.Errorf("remove a pet = %d", code)
+	}
+
+	code, _ = fetch(t, http.MethodGet, base+"/pets/1", "")
+	if code != http.StatusNotFound {
+		t.Errorf("removed pet = %d", code)
+	}
+
+	if exit := stop(); exit != exitOK {
+		t.Errorf("exit = %d: %s", exit, stderr.String())
+	}
+
+	out := stderr.String()
+	tryIt := "Try it:  curl http://localhost:" + opts.port + "/pets"
+
+	for _, want := range []string{"serving the built-in Petstore", "stateful:", tryIt, "Press Ctrl+C"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("banner lacks %q: %s", want, out)
+		}
+	}
+}
+
+func TestServeSpec_StatefulFlag(t *testing.T) {
+	spec, err := os.ReadFile(filepath.Join("..", "..", "examples", "petstore.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	opts := &serveOptions{
+		spec: tempSpec(t, string(spec)), port: freePort(t), dataDir: "", validation: "", watch: false,
+		stateful: true, demo: false,
+	}
+	base, _, stop := startServe(t, opts)
+
+	code, body := fetch(t, http.MethodGet, base+"/pets", "")
+	if code != http.StatusOK || strings.TrimSpace(body) != "[]" {
+		t.Fatalf("a stateful mock starts empty: %d %s", code, body)
+	}
+
+	fetch(t, http.MethodPost, base+"/pets", `{"name":"Rex"}`)
+
+	_, body = fetch(t, http.MethodGet, base+"/pets", "")
+	if !strings.Contains(body, `"Rex"`) {
+		t.Errorf("list after create = %s", body)
+	}
+
+	stop()
+}
+
+func TestServeSpec_WithoutStatefulStaysStatic(t *testing.T) {
+	spec, err := os.ReadFile(filepath.Join("..", "..", "examples", "petstore.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	opts := &serveOptions{
+		spec: tempSpec(t, string(spec)), port: freePort(t), dataDir: "", validation: "", watch: false,
+		stateful: false, demo: false,
+	}
+	base, _, stop := startServe(t, opts)
+
+	fetch(t, http.MethodPost, base+"/pets", `{"name":"Zed"}`)
+
+	_, body := fetch(t, http.MethodGet, base+"/pets", "")
+	if strings.Contains(body, `"Zed"`) {
+		t.Errorf("a stateless mock must not remember the pet: %s", body)
+	}
+
+	stop()
+}
+
+func TestTryItCommand(t *testing.T) {
+	endpoints := []usecase.Endpoint{
+		{Method: http.MethodPost, Path: "/pets"},
+		{Method: http.MethodGet, Path: "/pets/{petId}"},
+		{Method: http.MethodGet, Path: "/pets"},
+	}
+
+	if got := tryItCommand(endpoints, "http://localhost:8080"); got != "curl http://localhost:8080/pets" {
+		t.Errorf("tryItCommand = %q", got)
+	}
+
+	if got := tryItCommand(endpoints[:2], "http://localhost:8080"); got != "" {
+		t.Errorf("no parameterless GET: %q", got)
 	}
 }

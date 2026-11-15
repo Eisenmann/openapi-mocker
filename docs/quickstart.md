@@ -1,6 +1,57 @@
 # Quick start
 
-## Desktop
+## The 30-second tour
+
+![A terminal session: openapi-mocker serve --demo, then curl calls that list, add, fetch and remove pets, and a verification of the calls](assets/demo.svg)
+
+[Install](installation.md) the binary, or use the Docker image, and start the
+built-in Petstore. It needs no file, shows no UI and stops with Ctrl+C:
+
+```bash
+openapi-mocker serve --demo
+# or: docker run --rm -p 8080:8080 ghcr.io/eisenmann/openapi-mocker:latest serve --demo
+```
+
+In another terminal, list the three pets, add one and fetch it, then remove
+another. The mock is stateful, so later calls see the earlier ones:
+
+```bash
+curl localhost:8080/pets
+curl -H 'Content-Type: application/json' localhost:8080/pets -d '{"name":"Bella"}'
+curl localhost:8080/pets/4
+curl -X DELETE -i localhost:8080/pets/1      # 204, and GET /pets/1 is now a 404
+```
+
+Ask the mock what your code sent it, which is how a test checks its calls. A
+failed check answers `409`, so `curl --fail` fails the test:
+
+```bash
+curl --fail -H 'Content-Type: application/json' \
+  'localhost:8080/__mocker/api/projects/default/verify?strict=true' \
+  -d '{"method":"POST","path":"/pets","exactly":1}'
+```
+
+The recording above is made by `deploy/demo/make-demo.py` from a real run; its
+text version is [`assets/demo.cast`](assets/demo.cast).
+
+## Serve your own contract
+
+Give `serve` any OpenAPI (YAML or JSON), GraphQL, MCP or `.proto` file. The
+Petstore is also a file, so you can open it, change it and serve it:
+
+```bash
+curl -O https://raw.githubusercontent.com/Eisenmann/openapi-mocker/main/examples/petstore.yaml
+openapi-mocker serve petstore.yaml --watch     # reloads when you save the file
+curl localhost:8080/pets                       # example data from the contract
+```
+
+Without `--stateful` every call is answered from the contract, as Prism and
+most mock servers do: a created pet is not remembered. Add `--stateful` and
+`POST`, `PUT`, `PATCH` and `DELETE` change what later `GET`s return (the
+collections start empty). The other flags, the reserved paths and the exit
+codes are listed under [Sandbox](#sandbox-serve-and-the-ci-image) below.
+
+## Desktop with the web UI
 
 Install the binary with Homebrew, Scoop, `go install` or a release archive
 (see [Installation](installation.md)), then run it:
@@ -43,8 +94,11 @@ curl http://localhost:8080/users/1        # the operations live at the root
 ```
 
 - **Flags:** `--port N` (default `$PORT`, else 8080), `--validation off|warn|enforce`
-  (check requests against the contract), `--watch` (reload the file when it
-  changes; a broken edit is reported and the previous spec keeps being
+  (check requests against the contract), `--stateful` (`POST`, `PUT`, `PATCH`
+  and `DELETE` change what later `GET`s return; kept in memory, or saved in
+  `DIR` when `--data-dir` is given), `--demo` (serve the built-in Petstore,
+  stateful and with three pets, instead of a file), `--watch` (reload the file
+  when it changes; a broken edit is reported and the previous spec keeps being
   served) and `--data-dir DIR` (keep state in `DIR`; by default a temporary
   directory is used and removed on exit). `GRPC_PORT` also serves a `.proto`
   contract over gRPC; the other environment settings (`LOG_MODE`,

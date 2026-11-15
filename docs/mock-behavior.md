@@ -107,7 +107,7 @@ Schema-example fallbacks and stateful responses are not templated.
 Let `POST`, `PUT`, `PATCH` and `DELETE` change the
 data that later `GET`s return, so a "create then fetch" flow can be
 tested. Set per project (UI dropdown or `PATCH /api/projects/{id}` with
-`{"stateMode": "off|memory|persisted"}`; default `off`). `memory` keeps
+`{"stateMode": "off|memory|persisted"}`; default `off`; `openapi-mocker serve --stateful` turns it on for a served file). `memory` keeps
 the data until restart, `persisted` also saves it to `state.json` in the
 data directory. REST conventions are inferred from the contract's paths:
 `GET /users` lists the collection, `POST /users` creates a resource (the

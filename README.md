@@ -13,27 +13,37 @@ are in [`docs/`](docs/index.md)).
 
 ## Quick start
 
-Docker:
-
-```bash
-docker run -p 8080:8080 -v mocker-data:/data ghcr.io/eisenmann/openapi-mocker:latest
-# UI: http://localhost:8080
-```
-
-Or install the binary (see [Installation](docs/installation.md) for all options):
+Install the binary (see [Installation](docs/installation.md) for all options):
 
 ```bash
 brew install Eisenmann/tap/openapi-mocker                                  # macOS, Linux
 scoop bucket add eisenmann https://github.com/Eisenmann/scoop-bucket && scoop install openapi-mocker   # Windows
 go install github.com/Eisenmann/openapi-mocker/cmd/openapi-mocker@latest   # Go 1.26+
-openapi-mocker                                                             # UI: http://localhost:8080
 ```
 
-Serve one contract file with no UI and nothing left behind, for example in CI:
+Then start the built-in Petstore, with no file and no UI (stop it with Ctrl+C):
 
 ```bash
-openapi-mocker serve examples/simple-contract.yaml
-curl http://localhost:8080/users/1
+openapi-mocker serve --demo
+curl localhost:8080/pets
+```
+
+![A terminal session: openapi-mocker serve --demo, then curl calls that list, add, fetch and remove pets, and a verification of the calls](docs/assets/demo.svg)
+
+Serve your own contract file the same way, for example in CI. Nothing is left
+behind:
+
+```bash
+openapi-mocker serve examples/petstore.yaml
+curl http://localhost:8080/pets
+```
+
+For the full server with the web UI, run `openapi-mocker` with no arguments or
+use Docker:
+
+```bash
+docker run -p 8080:8080 -v mocker-data:/data ghcr.io/eisenmann/openapi-mocker:latest
+# UI: http://localhost:8080
 ```
 
 More options (Compose, Kubernetes, the CI image):

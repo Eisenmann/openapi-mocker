@@ -8,16 +8,27 @@ runs on a desktop, in Docker, in Kubernetes and headless in CI.
 
 ## Try it in a minute
 
+![A terminal session: openapi-mocker serve --demo, then curl calls that list, add, fetch and remove pets, and a verification of the calls](assets/demo.svg)
+
+Start the built-in Petstore, with no file and no UI:
+
 ```bash
-docker run -p 8080:8080 -v mocker-data:/data ghcr.io/eisenmann/openapi-mocker:latest
-# UI: http://localhost:8080
+openapi-mocker serve --demo
+curl localhost:8080/pets
 ```
 
-or serve one contract file, with no UI and nothing left behind:
+Serve your own contract file the same way, and nothing is left behind:
 
 ```bash
 openapi-mocker serve spec.yaml
 curl http://localhost:8080/users/1
+```
+
+For the full server with the web UI, run the Docker image:
+
+```bash
+docker run -p 8080:8080 -v mocker-data:/data ghcr.io/eisenmann/openapi-mocker:latest
+# UI: http://localhost:8080
 ```
 
 See [Installation](installation.md) for Homebrew, Scoop, `go install`, release
