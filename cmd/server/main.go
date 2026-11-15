@@ -15,6 +15,9 @@
 // "openapi-mocker diff OLD NEW [--fail-on-breaking]" compares two contract
 // files and exits (see diff.go).
 //
+// "openapi-mocker load run|generate|validate" runs load tests from the command
+// line (see load.go).
+//
 // "openapi-mocker mcp-stdio MANIFEST.json" serves an MCP manifest over the
 // MCP stdio transport for editors and agents (see mcpstdio.go).
 //
@@ -66,6 +69,10 @@ func main() {
 		os.Exit(runDiff(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
+	if len(os.Args) > 1 && os.Args[1] == "load" {
+		os.Exit(runLoad(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
 	if len(os.Args) > 1 && os.Args[1] == "mcp-stdio" {
 		os.Exit(runMCPStdio(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
 	}
@@ -110,8 +117,27 @@ func runServer() {
 	logStartup(port, dataDir)
 
 	serveErr := serveUntilSignal([]*http.Server{httpServer, a.grpc}, a.services.Logs, a.exporter)
+
+	stopLoadRuns(a.loadRuns)
+
 	if serveErr != nil {
 		log.Fatal(serveErr)
+	}
+}
+
+// stopLoadRuns ends the active load runs and gives them time to save what was
+// measured.
+func stopLoadRuns(runs *usecase.LoadRunService) {
+	if runs == nil {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownGrace)
+	defer cancel()
+
+	err := runs.Shutdown(ctx)
+	if err != nil {
+		log.Printf("stopping load runs: %v", err)
 	}
 }
 

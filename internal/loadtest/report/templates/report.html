@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>{{.R.Run.Name}} - load test report</title>
+<style>{{.CSS}}</style>
+</head>
+<body>
+<main>
+<h1>{{.R.Run.Name}}</h1>
+<p class="sub">Run {{.R.Run.ID}} · target {{.R.Run.Target}}{{if .R.Run.StartedAt}} · {{time .R.Run.StartedAt}}{{end}} · {{float .R.Run.DurationSeconds}} s{{if .R.Run.Actor}} · by {{.R.Run.Actor}}{{end}}</p>
+
+<section id="verdict">
+<p><span class="badge {{.VerdictCls}}">{{.VerdictText}}</span></p>
+{{if .R.Run.AbortReason}}<div class="banner">Stopped early: {{.R.Run.AbortReason}}</div>{{end}}
+{{if .R.Run.Error}}<div class="banner">The run failed: {{.R.Run.Error}}</div>{{end}}
+{{if .R.Generator.Untrustworthy}}<div class="banner"><b>Treat these numbers with care.</b> {{.R.Generator.Reason}}</div>{{end}}
+{{if .R.Thresholds}}
+<div class="scroll"><table>
+<thead><tr><th>Threshold</th><th>Observed</th><th>Result</th></tr></thead>
+<tbody>
+{{range .R.Thresholds}}<tr><td>{{.Metric}}{{if .Scope}}{<wbr>{{.Scope}}}{{end}} {{.Op}} {{float .Value}}{{if .AbortOnFail}} <span class="muted">(aborts)</span>{{end}}</td>
+<td>{{if .Observed}}{{float (deref .Observed)}}{{else}}<span class="muted">no data</span>{{end}}</td>
+<td class="{{if .Passed}}ok{{else}}bad{{end}}">{{if .Passed}}pass{{else}}fail{{end}}</td></tr>
+{{end}}</tbody></table></div>
+{{else}}<p class="muted">The plan has no thresholds, so the run has no verdict beyond the numbers below.</p>{{end}}
+</section>
+
+<h2>Key numbers</h2>
+<div class="cards">
+{{range .Cards}}<div class="card{{if .Warn}} warn{{end}}"><small>{{.Label}}</small><b>{{.Value}}</b>{{if .Note}}<small>{{.Note}}</small>{{end}}</div>
+{{end}}</div>
+{{if .Classes}}<p class="muted">Failures by class:{{range .Classes}} {{.Name}} {{int .Count}};{{end}}</p>{{end}}
+
+<h2>Latency percentiles over time</h2>
+{{.Charts.percentiles}}
+
+<h2>Achieved and requested rate</h2>
+{{.Charts.rate}}
+
+<h2>Latency distribution</h2>
+{{.Charts.histogram}}
+
+<h2>Latency heatmap</h2>
+<p class="muted">Each cell counts the requests of a time slice that fell in a latency band; darker means more.</p>
+{{.Charts.heatmap}}
+
+<h2>Errors over time</h2>
+{{.Charts.errors}}
+
+<h2>Where the time goes</h2>
+{{.Charts.timings}}
+
+<h2>Operations</h2>
+{{template "slices" .R.Operations}}
+
+<h2>Steps</h2>
+{{template "slices" .R.Steps}}
+
+{{if .R.Status}}
+<h2>By status code</h2>
+<div class="scroll"><table class="sortable"><thead><tr><th>Status</th><th>Count</th><th>p50</th><th>p95</th><th>p99</th><th>max</th></tr></thead><tbody>
+{{range .R.Status}}<tr><td>{{.Code}}</td><td>{{int .Count}}</td><td data-v="{{float .Latency.P50}}">{{ms .Latency.P50}}</td><td data-v="{{float .Latency.P95}}">{{ms .Latency.P95}}</td><td data-v="{{float .Latency.P99}}">{{ms .Latency.P99}}</td><td data-v="{{float .Latency.Max}}">{{ms .Latency.Max}}</td></tr>
+{{end}}</tbody></table></div>
+{{end}}
+
+<h2>Failed and slowest requests</h2>
+{{if .Failed}}<h3>First failures</h3>{{template "samples" .Failed}}{{end}}
+{{if .Slowest}}<h3>Slowest</h3>{{template "samples" .Slowest}}{{end}}
+{{if not .Failed}}{{if not .Slowest}}<p class="muted">No samples were kept.</p>{{end}}{{end}}
+
+<h2>Load generator health</h2>
+<p class="muted">If these delays are large, the generator, not the target, may explain slow results.</p>
+{{.Charts.health}}
+
+<h2>Plan and environment</h2>
+<dl>
+<dt>Version</dt><dd>{{.R.Environment.Version}}</dd>
+<dt>Go</dt><dd>{{.R.Environment.GoVersion}}</dd>
+<dt>Machine</dt><dd>{{.R.Environment.OS}}/{{.R.Environment.Arch}}, {{.R.Environment.CPUs}} CPUs</dd>
+<dt>Report schema</dt><dd>{{.R.SchemaVersion}}</dd>
+</dl>
+<details><summary>Plan as run</summary><pre>{{.Plan}}</pre></details>
+</main>
+<script>{{.JS}}</script>
+</body>
+</html>
+{{define "slices"}}{{if .}}<div class="scroll"><table class="sortable"><thead><tr><th>Name</th><th>Requests</th><th>Errors</th><th>Error rate</th><th>Violations</th><th>p50</th><th>p95</th><th>p99</th><th>max</th></tr></thead><tbody>
+{{range .}}<tr><td>{{.Name}}</td><td>{{int .Requests}}</td><td{{if .Errors}} class="bad"{{end}}>{{int .Errors}}</td><td data-v="{{float .ErrorRate}}">{{pct .ErrorRate}}</td><td{{if .ContractViolations}} class="bad"{{end}}>{{int .ContractViolations}}</td>
+<td data-v="{{float .Latency.P50}}">{{ms .Latency.P50}}</td><td data-v="{{float .Latency.P95}}">{{ms .Latency.P95}}</td><td data-v="{{float .Latency.P99}}">{{ms .Latency.P99}}</td><td data-v="{{float .Latency.Max}}">{{ms .Latency.Max}}</td></tr>
+{{end}}</tbody></table></div>{{else}}<p class="muted">No data.</p>{{end}}{{end}}
+{{define "samples"}}{{range .}}<details><summary>{{.Step}} · {{.Status}} · {{ms .LatencyMs}}{{if .ErrorClass}} · {{.ErrorClass}}{{end}}{{if .ChecksFailed}} · {{.ChecksFailed}} failed checks{{end}}{{if .Violations}} · {{.Violations}} contract violations{{end}}</summary>
+{{with .Detail}}<pre>{{.Method}} {{.URL}}
+{{hdrs .RequestHeaders}}{{if .RequestBody}}
+{{.RequestBody}}{{end}}{{if .ResponseHeaders}}
+
+--- response ---
+{{hdrs .ResponseHeaders}}{{end}}{{if .ResponseBody}}
+{{.ResponseBody}}{{end}}{{if .Error}}
+
+{{.Error}}{{end}}</pre>{{else}}<p class="muted">No detail was kept for this request.</p>{{end}}</details>
+{{end}}{{end}}

@@ -66,8 +66,7 @@ func NewRouter(s *Services) http.Handler {
 
 	// --- import / export ---.
 	a.registerExchangeRoutes(mux)
-	a.registerAuthRoutes(mux)
-	a.registerAccessRoutes(mux)
+	a.registerManagementRoutes(mux)
 
 	// --- request logs and contract drift ---.
 	a.registerDiagnosticsRoutes(mux)
@@ -136,4 +135,11 @@ func (a *api) registerProjectRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/projects/{id}", a.getProject)
 	mux.HandleFunc("PATCH /api/projects/{id}", a.updateProject)
 	mux.HandleFunc("DELETE /api/projects/{id}", a.deleteProject)
+}
+
+// registerManagementRoutes wires the auth, access control and load testing routes.
+func (a *api) registerManagementRoutes(mux *http.ServeMux) {
+	a.registerAuthRoutes(mux)
+	a.registerAccessRoutes(mux)
+	a.registerLoadRoutes(mux)
 }

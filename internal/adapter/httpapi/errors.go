@@ -2,6 +2,13 @@ package httpapi
 
 import "errors"
 
+const (
+	// formatYAML is the name of the YAML format in query parameters.
+	formatYAML = "yaml"
+	// errorField is the field of the JSON body of an error answer.
+	errorField = "error"
+)
+
 // Sentinel errors returned to HTTP clients through writeError. Keeping them
 // as package-level values lets err113 stay clean and gives tests/callers a
 // stable identity (errors.Is) instead of matching on message text.

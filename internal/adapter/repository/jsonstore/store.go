@@ -56,6 +56,8 @@ type Store struct {
 	d    data
 	// auditCap bounds the audit entries kept per project.
 	auditCap int
+	// lastMock is the creation time of the newest mock rule.
+	lastMock time.Time
 }
 
 func New(dir string) (*Store, error) {
@@ -310,6 +312,16 @@ func (s *Store) CreateMock(m *domain.MockRule) *domain.MockRule {
 	defer s.mu.Unlock()
 
 	now := time.Now().UTC()
+
+	// A coarse clock (Windows ticks every few milliseconds) gives rules created
+	// together the same time, and then "the first created rule wins" would depend
+	// on their random ids. Every rule is created later than the one before.
+	if !now.After(s.lastMock) {
+		now = s.lastMock.Add(time.Nanosecond)
+	}
+
+	s.lastMock = now
+
 	m.ID = idgen.New()
 	m.CreatedAt = now
 	m.UpdatedAt = now

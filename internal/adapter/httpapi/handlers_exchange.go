@@ -137,10 +137,10 @@ func (a *api) exportContract(w http.ResponseWriter, r *http.Request) {
 
 	encoding := r.URL.Query().Get("as")
 	if encoding == "" {
-		encoding = "yaml"
+		encoding = formatYAML
 	}
 
-	if encoding != "yaml" && encoding != "json" {
+	if encoding != formatYAML && encoding != "json" {
 		writeError(w, http.StatusBadRequest, fmt.Errorf("%w: as must be yaml or json", errUnknownFormat))
 		return
 	}

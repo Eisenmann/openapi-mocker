@@ -1,0 +1,692 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Eisenmann/openapi-mocker/docs/load-report.schema.json",
+  "title": "openapi-mocker load test report",
+  "description": "The JSON report written by `openapi-mocker load run --format json` and stored with every run. All latencies are in milliseconds. Fields may be added without changing schemaVersion; a changed or removed field bumps it.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "run",
+    "thresholds",
+    "totals",
+    "latency",
+    "errors",
+    "operations",
+    "steps",
+    "status",
+    "timings",
+    "histogram",
+    "heatUpperMs",
+    "series",
+    "health",
+    "generator",
+    "slowest",
+    "firstFailed",
+    "environment",
+    "plan"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "run": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "pending",
+            "running",
+            "paused",
+            "finished",
+            "aborted",
+            "failed"
+          ]
+        },
+        "verdict": {
+          "enum": [
+            "pass",
+            "fail"
+          ]
+        },
+        "abortReason": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "actor": {
+          "type": "string"
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "finishedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "durationSeconds": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "target",
+        "state",
+        "durationSeconds"
+      ]
+    },
+    "thresholds": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "metric": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "op": {
+            "enum": [
+              "<",
+              "<=",
+              ">",
+              ">=",
+              "==",
+              "!="
+            ]
+          },
+          "value": {
+            "type": "number"
+          },
+          "observed": {
+            "type": "number",
+            "description": "Absent when nothing was measured for the threshold."
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "abortOnFail": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "metric",
+          "op",
+          "value",
+          "passed"
+        ]
+      }
+    },
+    "totals": {
+      "type": "object",
+      "properties": {
+        "requests": {
+          "type": "integer"
+        },
+        "errors": {
+          "type": "integer"
+        },
+        "errorRate": {
+          "type": "number"
+        },
+        "checksPassed": {
+          "type": "integer"
+        },
+        "checksFailed": {
+          "type": "integer"
+        },
+        "contractViolations": {
+          "type": "integer"
+        },
+        "bytesIn": {
+          "type": "integer"
+        },
+        "bytesOut": {
+          "type": "integer"
+        },
+        "throughputRps": {
+          "type": "number"
+        },
+        "dropped": {
+          "type": "integer"
+        },
+        "warmupRequests": {
+          "type": "integer"
+        },
+        "measuredSeconds": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "requests",
+        "errors",
+        "errorRate",
+        "throughputRps"
+      ]
+    },
+    "latency": {
+      "$ref": "#/$defs/latency"
+    },
+    "errors": {
+      "type": "object",
+      "description": "Counts per error class: timeout, refused, reset, tls, dns, http_4xx, http_5xx, check_failed, contract_violation.",
+      "additionalProperties": {
+        "type": "integer"
+      }
+    },
+    "operations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "requests": {
+            "type": "integer"
+          },
+          "errors": {
+            "type": "integer"
+          },
+          "errorRate": {
+            "type": "number"
+          },
+          "contractViolations": {
+            "type": "integer"
+          },
+          "checksFailed": {
+            "type": "integer"
+          },
+          "errorsByClass": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "latency": {
+            "$ref": "#/$defs/latency"
+          }
+        },
+        "required": [
+          "name",
+          "requests",
+          "errors",
+          "errorRate",
+          "latency"
+        ]
+      }
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "requests": {
+            "type": "integer"
+          },
+          "errors": {
+            "type": "integer"
+          },
+          "errorRate": {
+            "type": "number"
+          },
+          "contractViolations": {
+            "type": "integer"
+          },
+          "checksFailed": {
+            "type": "integer"
+          },
+          "errorsByClass": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "latency": {
+            "$ref": "#/$defs/latency"
+          }
+        },
+        "required": [
+          "name",
+          "requests",
+          "errors",
+          "errorRate",
+          "latency"
+        ]
+      }
+    },
+    "status": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "latency": {
+            "$ref": "#/$defs/latency"
+          }
+        },
+        "required": [
+          "code",
+          "count",
+          "latency"
+        ]
+      }
+    },
+    "timings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "phase": {
+            "enum": [
+              "dns",
+              "connect",
+              "tls",
+              "ttfb",
+              "download"
+            ]
+          },
+          "count": {
+            "type": "integer"
+          },
+          "latency": {
+            "$ref": "#/$defs/latency"
+          }
+        },
+        "required": [
+          "phase",
+          "count",
+          "latency"
+        ]
+      }
+    },
+    "histogram": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "upperMs": {
+            "type": "number"
+          },
+          "count": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "upperMs",
+          "count"
+        ]
+      }
+    },
+    "heatUpperMs": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "description": "Upper latency bound of each heatmap bin."
+    },
+    "series": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "second": {
+            "type": "integer"
+          },
+          "warmup": {
+            "type": "boolean"
+          },
+          "requests": {
+            "type": "integer"
+          },
+          "errors": {
+            "type": "integer"
+          },
+          "errorsByClass": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "inFlight": {
+            "type": "integer"
+          },
+          "vus": {
+            "type": "integer"
+          },
+          "dropped": {
+            "type": "integer"
+          },
+          "p50": {
+            "type": "number"
+          },
+          "p90": {
+            "type": "number"
+          },
+          "p95": {
+            "type": "number"
+          },
+          "p99": {
+            "type": "number"
+          },
+          "max": {
+            "type": "number"
+          },
+          "mean": {
+            "type": "number"
+          },
+          "heat": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          }
+        },
+        "required": [
+          "second",
+          "requests",
+          "errors",
+          "p50",
+          "p90",
+          "p95",
+          "p99",
+          "max",
+          "mean"
+        ]
+      }
+    },
+    "health": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "second": {
+            "type": "integer"
+          },
+          "cpuCores": {
+            "type": "number"
+          },
+          "goroutines": {
+            "type": "integer"
+          },
+          "gcPauseMaxMs": {
+            "type": "number"
+          },
+          "schedLatencyP99Ms": {
+            "type": "number"
+          },
+          "lagMs": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "second"
+        ]
+      }
+    },
+    "generator": {
+      "type": "object",
+      "properties": {
+        "untrustworthy": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "maxLagMs": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "untrustworthy",
+        "maxLagMs"
+      ]
+    },
+    "slowest": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "step": {
+            "type": "string"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "latencyMs": {
+            "type": "number"
+          },
+          "errorClass": {
+            "type": "string"
+          },
+          "checksFailed": {
+            "type": "integer"
+          },
+          "contractViolations": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "object",
+            "properties": {
+              "method": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "requestHeaders": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "requestBody": {
+                "type": "string"
+              },
+              "responseHeaders": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "responseBody": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "required": [
+          "step",
+          "operation",
+          "status",
+          "latencyMs"
+        ]
+      }
+    },
+    "firstFailed": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "step": {
+            "type": "string"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "latencyMs": {
+            "type": "number"
+          },
+          "errorClass": {
+            "type": "string"
+          },
+          "checksFailed": {
+            "type": "integer"
+          },
+          "contractViolations": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "object",
+            "properties": {
+              "method": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "requestHeaders": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "requestBody": {
+                "type": "string"
+              },
+              "responseHeaders": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "responseBody": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "required": [
+          "step",
+          "operation",
+          "status",
+          "latencyMs"
+        ]
+      }
+    },
+    "environment": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "string"
+        },
+        "goVersion": {
+          "type": "string"
+        },
+        "os": {
+          "type": "string"
+        },
+        "arch": {
+          "type": "string"
+        },
+        "cpus": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "version",
+        "goVersion",
+        "os",
+        "arch",
+        "cpus"
+      ]
+    },
+    "plan": {
+      "type": "object",
+      "description": "The plan that was run, as parsed (see examples/load-plan.yaml)."
+    }
+  },
+  "$defs": {
+    "latency": {
+      "type": "object",
+      "properties": {
+        "min": {
+          "type": "number"
+        },
+        "mean": {
+          "type": "number"
+        },
+        "stdDev": {
+          "type": "number"
+        },
+        "p50": {
+          "type": "number"
+        },
+        "p75": {
+          "type": "number"
+        },
+        "p90": {
+          "type": "number"
+        },
+        "p95": {
+          "type": "number"
+        },
+        "p99": {
+          "type": "number"
+        },
+        "p999": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "min",
+        "mean",
+        "stdDev",
+        "p50",
+        "p75",
+        "p90",
+        "p95",
+        "p99",
+        "p999",
+        "max"
+      ]
+    }
+  }
+}

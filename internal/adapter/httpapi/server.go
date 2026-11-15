@@ -53,6 +53,10 @@ type Services struct {
 	// Access manages API tokens, share links and the audit log; nil turns
 	// access control off.
 	Access *usecase.AccessService
+	// LoadPlans and LoadRuns serve the load testing API; both nil leave it
+	// disabled.
+	LoadPlans *usecase.LoadPlanService
+	LoadRuns  *usecase.LoadRunService
 }
 
 type api struct {
@@ -83,7 +87,7 @@ func writeError(w http.ResponseWriter, defaultStatus int, err error) {
 		status = http.StatusNotFound
 	}
 
-	writeJSON(w, status, map[string]string{"error": err.Error()})
+	writeJSON(w, status, map[string]string{errorField: err.Error()})
 }
 
 func readJSON(r *http.Request, v interface{}) error {

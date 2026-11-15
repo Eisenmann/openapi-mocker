@@ -59,6 +59,11 @@ type TemplateContext struct {
 	Body []byte
 	// JSON is true when the rendered text is a JSON document.
 	JSON bool
+	// Resolve lets a caller add placeholders of its own (the load tester
+	// uses it for {{vars.x}} and {{data.feeder.col}}). It is asked first with
+	// the dotted head of the tag and its arguments; handled false falls back
+	// to the built-in placeholders.
+	Resolve func(head string, args []string) (v any, handled bool)
 
 	body   any
 	parsed bool
@@ -211,6 +216,17 @@ func (t *TemplateEngine) value(tag string, ctx *TemplateContext) (v any, ok bool
 		args[i] = strings.Trim(args[i], `'"`)
 	}
 
+	if ctx.Resolve != nil {
+		if v, handled := ctx.Resolve(head, args); handled {
+			return v, true
+		}
+	}
+
+	return t.byNamespace(head, args, ctx)
+}
+
+// byNamespace evaluates the built-in placeholders by their namespace.
+func (t *TemplateEngine) byNamespace(head string, args []string, ctx *TemplateContext) (v any, ok bool) {
 	ns, rest, _ := strings.Cut(head, ".")
 
 	switch ns {

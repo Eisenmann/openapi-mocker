@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="pets &lt;load&gt; &amp; test" tests="3" failures="2" time="12.000">
+  <testsuite name="pets &lt;load&gt; &amp; test" tests="3" failures="2" time="12.000">
+    <testcase name="http.latency.p95 &lt; 500" classname="pets &lt;load&gt; &amp; test" time="0"></testcase>
+    <testcase name="errors.rate{listPets} &lt; 0.01" classname="pets &lt;load&gt; &amp; test" time="0">
+      <failure message="observed 0.2" type="threshold">errors.rate{listPets} &lt; 0.01: observed 0.2</failure>
+    </testcase>
+    <testcase name="http.latency.p99{ghost} &lt; 900" classname="pets &lt;load&gt; &amp; test" time="0">
+      <failure message="no data was measured" type="threshold">http.latency.p99{ghost} &lt; 900: no data was measured</failure>
+    </testcase>
+  </testsuite>
+</testsuites>

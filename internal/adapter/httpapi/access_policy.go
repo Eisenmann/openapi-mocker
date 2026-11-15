@@ -18,6 +18,8 @@ const (
 	targetProject  = "project"
 	targetContract = "contract"
 	targetMock     = "mock"
+	targetLoadPlan = "load-plan"
+	targetLoadRun  = "load-run"
 )
 
 // accessRule says who may call a route and how a call is audited.
@@ -106,6 +108,16 @@ func buildAuditTable() map[string]accessRule {
 	add(http.MethodDelete, proj+"/drift", change(domain.RoleEditor, "drift.clear", "drift", ""))
 	add(http.MethodDelete, proj+"/stats", change(domain.RoleEditor, "stats.reset", "stats", ""))
 	add(http.MethodDelete, proj+"/calls", change(domain.RoleEditor, "calls.clear", "calls", ""))
+	add(http.MethodPost, proj+"/load/plans", change(domain.RoleLoadRunner, "load.plan.save", targetLoadPlan, ""))
+	add(http.MethodPut, proj+"/load/plans/{planId}",
+		change(domain.RoleLoadRunner, "load.plan.save", targetLoadPlan, "planId"))
+	add(http.MethodDelete, proj+"/load/plans/{planId}",
+		change(domain.RoleLoadRunner, "load.plan.delete", targetLoadPlan, "planId"))
+	add(http.MethodPost, proj+"/load/runs", change(domain.RoleLoadRunner, "load.run.start", targetLoadRun, ""))
+	add(http.MethodPost, proj+"/load/runs/{runId}/abort",
+		change(domain.RoleLoadRunner, "load.run.abort", targetLoadRun, "runId"))
+	add(http.MethodDelete, proj+"/load/runs/{runId}",
+		change(domain.RoleLoadRunner, "load.run.delete", targetLoadRun, "runId"))
 	add(http.MethodPost, proj+"/access/tokens", change(domain.RoleAdmin, "token.create", "token", ""))
 	add(http.MethodDelete, proj+"/access/tokens/{tokenId}",
 		change(domain.RoleAdmin, "token.revoke", "token", "tokenId"))
@@ -153,6 +165,9 @@ func relativeRule(method, rel, pattern string) accessRule {
 	case rel == "/auth" || rel == "/export":
 		// Mock credentials and the whole bundle: more than a reader sees.
 		return plain(domain.RoleEditor)
+	case isLoadReport(method, rel):
+		// A report quotes slow and failed requests and responses of the target.
+		return plain(domain.RoleLoadRunner)
 	case isRead(method):
 		return newRule(domain.RoleViewer, shareReadable[rel], "", "", "")
 	case notAudited[pattern]:
@@ -160,6 +175,11 @@ func relativeRule(method, rel, pattern string) accessRule {
 	default:
 		return change(domain.RoleEditor, "other: "+pattern, "", "")
 	}
+}
+
+// isLoadReport is true for a read of a load run's report.
+func isLoadReport(method, rel string) bool {
+	return isRead(method) && strings.HasPrefix(rel, "/load/runs/") && strings.HasSuffix(rel, "/report")
 }
 
 // accessRuleFor is the rule of the access-management routes: admins only,

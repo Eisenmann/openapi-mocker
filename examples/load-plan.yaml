@@ -1,0 +1,52 @@
+# Load plan for openapi-mocker: run with
+#   openapi-mocker load run examples/load-plan.yaml
+# Durations need a unit (30s, 2m, 300ms). Rates are iterations per second.
+name: pet store smoke
+description: Browse the catalog at a steady rate and fail on slow or broken responses.
+
+target:
+  # mock://<projectId> is this server's own mock of a project. For an
+  # external system use its URL and list the hosts load may be sent to.
+  baseUrl: mock://pets
+  allowHosts: []
+  http:
+    protocol: http1        # http1 | http2 | h2c (empty: negotiate)
+    timeout: 10s
+    maxConnsPerHost: 200
+    insecureSkipVerify: false
+
+scenarios:
+  browse:
+    weight: 9
+    steps:
+      # A step can come straight from the contract: path, query, header
+      # parameters and a valid body are generated from the schema.
+      - operation: listPets
+        checks:
+          - status in [200]
+          - latency < 800ms
+          - contract
+  lookup:
+    weight: 1
+    steps:
+      - operation: "GET /pets/{petId}"
+
+load:
+  model: open              # open | closed | iterations
+  stages:
+    - {duration: 1m, rate: 10}   # ramp from 0 to 10 iterations/s
+    - {duration: 5m, rate: 10}   # hold
+  warmup: 10s
+  gracefulStop: 10s
+  maxInFlight: 1000
+
+thresholds:
+  - http.latency.p95 < 500ms
+  - http.latency.p99 < 1s
+  - errors.rate < 1%
+  - contract.violations == 0
+  - expr: errors.rate < 5%
+    abortOnFail: true
+    abortDelay: 30s
+
+outputs: [html, json, junit]

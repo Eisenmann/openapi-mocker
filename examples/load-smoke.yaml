@@ -1,0 +1,23 @@
+# A 10-second load plan against a running server; deploy/smoke-test.sh runs it.
+name: smoke
+target:
+  baseUrl: http://127.0.0.1:8080
+  allowHosts: [127.0.0.1]
+
+scenarios:
+  ping:
+    weight: 1
+    steps:
+      - name: ping
+        method: GET
+        path: /ping
+        checks: ["status == 200"]
+
+load:
+  model: open
+  stages:
+    - {duration: 10s, rate: 20}
+
+thresholds:
+  - errors.rate < 1%
+  - http.latency.p95 < 500ms
