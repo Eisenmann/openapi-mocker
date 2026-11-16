@@ -36,6 +36,7 @@ nav:
       - Observability and assertions: observability.md
       - Import and export: import-export.md
       - Load testing: load-testing.md
+      - MCP control plane: mcp-control.md
       - Code generation: code-generation.md
   - Reference:
       - REST API: rest-api.md

@@ -73,6 +73,9 @@ Start time, memory and throughput against WireMock, Prism and Mockoon CLI:
   [Guide](docs/import-export.md)
 - **Load testing:** plan files, open and closed models, thresholds and
   HTML/JSON/JUnit/CSV reports. [Guide](docs/load-testing.md)
+- **MCP control plane:** `openapi-mocker mcp` lets an AI agent create
+  projects, add rules and faults, verify calls and run load tests over MCP.
+  [Guide](docs/mcp-control.md)
 - **Code generation:** server skeletons and clients for six languages.
   [Guide](docs/code-generation.md)
 

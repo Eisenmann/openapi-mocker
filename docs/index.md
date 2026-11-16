@@ -48,6 +48,7 @@ Prism and Mockoon CLI, see the [benchmark](benchmark.md).
 | Observability | live request log, hit counts, Prometheus metrics, log shipping, test assertions (`verify`) | [Observability](observability.md) |
 | Import / export | Postman, Insomnia, HAR, OpenAPI, Swagger, bundles | [Import and export](import-export.md) |
 | Load testing | plans, open and closed models, thresholds, HTML/JSON/JUnit/CSV reports | [Load testing](load-testing.md) |
+| MCP control plane | an AI agent creates projects, adds rules and faults, verifies calls and runs load tests over MCP | [MCP control plane](mcp-control.md) |
 | Code generation | server skeletons and clients for Go, TypeScript, Python, Java, Rust and C# | [Code generation](code-generation.md) |
 | Operations | Homebrew, Scoop, `go install`, Docker, Kubernetes, release binaries | [Installation](installation.md), [Deployment](deployment.md) |
 
