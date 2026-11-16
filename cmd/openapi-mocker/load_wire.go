@@ -32,7 +32,7 @@ type loadServices struct {
 // service. Limits come from LOAD_MAX_RPS, LOAD_MAX_VUS, LOAD_MAX_DURATION and
 // LOAD_MAX_CONNS, retention from LOAD_RUNS_KEEP and LOAD_RUNS_MAX_AGE.
 func newLoadServices(
-	ctx context.Context, dataDir string, store *jsonstore.Store, contracts *openapi.Engine,
+	ctx context.Context, dataDir string, store *jsonstore.Store, contracts *openapi.Engine, mockBase string,
 ) (*loadServices, error) {
 	caps, err := usecase.LoadCapsFromEnv(os.Getenv)
 	if err != nil {
@@ -68,7 +68,7 @@ func newLoadServices(
 
 	runs, err := usecase.NewLoadRunService(ctx, &usecase.LoadRunDeps{
 		Engine: engine.New(cfg), Store: files, Caps: caps,
-		MockBase: "http://127.0.0.1:" + getEnv("PORT", "8080"),
+		MockBase: mockBase,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("initialize load runs: %w", err)

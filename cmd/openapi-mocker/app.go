@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 
@@ -33,13 +34,35 @@ type app struct {
 	exporter *usecase.LogExporter
 	// loadRuns is nil in a lite app; the server stops its runs on shutdown.
 	loadRuns *usecase.LoadRunService
+	// engine reads contracts; the MCP control plane uses it to plan load tests.
+	engine *openapi.Engine
+}
+
+// appOptions says which optional parts buildAppWith wires.
+type appOptions struct {
+	// agent wires the code generation agent.
+	agent bool
+	// load wires load testing.
+	load bool
+	// mockBase is the address of the server's own mock, the base of mock://
+	// load targets; empty means http://127.0.0.1:$PORT (default 8080).
+	mockBase string
+	// logOut receives the stdout log sink; it is stderr where stdout carries a
+	// protocol.
+	logOut io.Writer
 }
 
 // buildApp wires the application on top of dataDir. A lite app (the serve
-// command) leaves out the code generation agent, which a mock needs no part of.
+// command) leaves out the code generation agent, which a mock needs no part of,
+// and load testing.
+func buildApp(dataDir string, lite bool) (*app, error) {
+	return buildAppWith(dataDir, &appOptions{agent: !lite, load: !lite, mockBase: "", logOut: os.Stdout})
+}
+
+// buildAppWith is buildApp with the optional parts chosen one by one.
 //
 //nolint:funlen // composition root: wiring only.
-func buildApp(dataDir string, lite bool) (*app, error) {
+func buildAppWith(dataDir string, opts *appOptions) (*app, error) {
 	// ---- Frameworks & Drivers / Interface Adapters: concrete implementations ----.
 	store, err := jsonstore.New(dataDir) // implements all 5 repository ports.
 	if err != nil {
@@ -55,7 +78,7 @@ func buildApp(dataDir string, lite bool) (*app, error) {
 
 	// ---- Multi-language code generation system ----.
 	var codeGenAgent *agents.CodeGenerationAgent
-	if !lite {
+	if opts.agent {
 		codeGenAgent = initCodeGenerationAgent(logger.New())
 	}
 
@@ -71,7 +94,7 @@ func buildApp(dataDir string, lite bool) (*app, error) {
 	contractService := newContractService(store, contractEngine, llmGateway, validators)
 	projectService := usecase.NewProjectService(store)
 
-	logHub, logExporter, err := newLogHub(store, os.Stdout)
+	logHub, logExporter, err := newLogHub(store, opts.logOut)
 	if err != nil {
 		return nil, err
 	}
@@ -109,8 +132,13 @@ func buildApp(dataDir string, lite bool) (*app, error) {
 	// Load testing is part of the full server only: a lite app serves the mock at the root.
 	var loadRuns *usecase.LoadRunService
 
-	if !lite {
-		ls, loadErr := newLoadServices(context.Background(), dataDir, store, contractEngine)
+	if opts.load {
+		mockBase := opts.mockBase
+		if mockBase == "" {
+			mockBase = "http://127.0.0.1:" + getEnv("PORT", "8080")
+		}
+
+		ls, loadErr := newLoadServices(context.Background(), dataDir, store, contractEngine, mockBase)
 		if loadErr != nil {
 			return nil, loadErr
 		}
@@ -123,6 +151,6 @@ func buildApp(dataDir string, lite bool) (*app, error) {
 	// ---- Interface Adapter: HTTP controllers + routing ----.
 	return &app{
 		services: &services, handler: httpapi.NewRouter(&services), store: store,
-		grpc: grpcServer, exporter: logExporter, loadRuns: loadRuns,
+		grpc: grpcServer, exporter: logExporter, loadRuns: loadRuns, engine: contractEngine,
 	}, nil
 }
