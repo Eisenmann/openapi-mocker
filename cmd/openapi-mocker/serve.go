@@ -16,6 +16,7 @@ import (
 
 	"github.com/Eisenmann/openapi-mocker/examples"
 	"github.com/Eisenmann/openapi-mocker/internal/domain"
+	"github.com/Eisenmann/openapi-mocker/internal/telemetry"
 	"github.com/Eisenmann/openapi-mocker/internal/usecase"
 )
 
@@ -266,6 +267,9 @@ func serveSpec(ctx context.Context, opts *serveOptions, stderr io.Writer) int {
 	}
 
 	printBanner(stderr, a, opts, label, projectID)
+	telemetryHint(stderr, dataDir)
+
+	startTelemetry(ctx, telemetry.ModeServe, dataDir, func() []string { return []string{protocolOf(raw)} })
 
 	if opts.watch {
 		go watchSpec(ctx, a, opts.spec, projectID, stderr)

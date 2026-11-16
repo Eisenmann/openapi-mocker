@@ -6,6 +6,9 @@
 # OS is linux, darwin or windows, ARCH is amd64 or arm64. The archive is a
 # .zip for Windows and a .tar.gz otherwise; it holds the binary, README,
 # LICENSE and the examples. Run it from the repository root.
+#
+# TELEMETRY_URL, when set, is built in as the collector of the opt-in usage
+# ping (see docs/privacy.md). Without it the build can never send a ping.
 set -euo pipefail
 
 os="${1:?usage: release-build.sh OS ARCH VERSION}"
@@ -20,7 +23,9 @@ rm -rf "dist/$name"
 mkdir -p "dist/$name"
 
 CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
-  go build -trimpath -ldflags "-s -w -X main.version=${version}" -o "dist/$name/$bin" ./cmd/openapi-mocker
+  go build -trimpath \
+  -ldflags "-s -w -X main.version=${version} -X main.telemetryEndpoint=${TELEMETRY_URL:-}" \
+  -o "dist/$name/$bin" ./cmd/openapi-mocker
 
 cp README.md LICENSE "dist/$name/"
 cp -r examples "dist/$name/examples"

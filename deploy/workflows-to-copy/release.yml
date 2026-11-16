@@ -49,6 +49,8 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Build and package
+        env:
+          TELEMETRY_URL: ${{ vars.TELEMETRY_URL }}
         run: bash deploy/release-build.sh "${{ matrix.os }}" "${{ matrix.arch }}" "${GITHUB_REF_NAME#v}"
       - uses: actions/upload-artifact@v4
         with:

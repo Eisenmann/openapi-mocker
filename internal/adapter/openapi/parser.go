@@ -22,9 +22,14 @@ import (
 // by content: the same bytes give the same document. The document is shared
 // between callers and goroutines and must be treated as read-only.
 func parse(raw []byte) (*openapi3.T, error) {
+	return parseCached(parsedDocs, raw)
+}
+
+// parseCached is parse over a given cache.
+func parseCached(cache *docCache, raw []byte) (*openapi3.T, error) {
 	key := sha256.Sum256(raw)
 
-	doc, ok := parsedDocs.get(key)
+	doc, ok := cache.get(key)
 	if ok {
 		return doc, nil
 	}
@@ -34,7 +39,7 @@ func parse(raw []byte) (*openapi3.T, error) {
 		return nil, err
 	}
 
-	parsedDocs.put(key, doc)
+	cache.put(key, doc)
 
 	return doc, nil
 }

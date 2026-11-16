@@ -53,6 +53,7 @@ Prism and Mockoon CLI, see the [benchmark](benchmark.md).
 
 Everything the UI does is also available over the [REST API](rest-api.md).
 Read [Known limitations](limitations.md) before you plan a production setup.
+The optional [usage ping](privacy.md) is off unless you turn it on.
 
 ## The web UI
 
