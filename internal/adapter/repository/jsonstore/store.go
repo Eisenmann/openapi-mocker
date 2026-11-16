@@ -58,7 +58,16 @@ type Store struct {
 	auditCap int
 	// lastMock is the creation time of the newest mock rule.
 	lastMock time.Time
+	// logTimer is set while a deferred write of new request logs is pending.
+	logTimer *time.Timer
 }
+
+// logFlushDelay is how long new request logs wait before they are written.
+// Logs arrive on every mocked request, and rewriting the whole database for
+// each of them made the write the slowest part of serving a request, so
+// writes within this window share one. A crash loses at most this window of
+// logs; every other change is still written at once.
+const logFlushDelay = 200 * time.Millisecond
 
 func New(dir string) (*Store, error) {
 	err := os.MkdirAll(dir, 0o755)
@@ -482,7 +491,32 @@ func (s *Store) Add(l *domain.RequestLog) {
 		s.d.Logs = s.d.Logs[len(s.d.Logs)-5000:]
 	}
 
-	_ = s.save()
+	s.scheduleLogSave()
+}
+
+// scheduleLogSave arranges one write of the database after logFlushDelay,
+// unless one is already pending. It must be called while holding s.mu.
+func (s *Store) scheduleLogSave() {
+	if s.logTimer != nil {
+		return
+	}
+
+	s.logTimer = time.AfterFunc(logFlushDelay, func() { _ = s.Flush() })
+}
+
+// Flush writes any pending changes now. Call it before the process exits.
+func (s *Store) Flush() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.logTimer == nil {
+		return nil
+	}
+
+	s.logTimer.Stop()
+	s.logTimer = nil
+
+	return s.save()
 }
 
 func (s *Store) ListLogs(projectID string, limit int) []*domain.RequestLog {

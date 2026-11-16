@@ -274,6 +274,8 @@ func serveSpec(ctx context.Context, opts *serveOptions, stderr io.Writer) int {
 	httpServer := newHTTPServer(opts.port, serveHandler(a.handler, projectID))
 
 	err = serveUntil(ctx, []*http.Server{httpServer, a.grpc}, a.services.Logs, a.exporter)
+	flushStore(a.store)
+
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "serve: %v\n", err)
 		return exitIOFailure

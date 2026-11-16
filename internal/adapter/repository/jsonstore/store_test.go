@@ -490,3 +490,33 @@ func TestStore_ListMocksKeepsCreationOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestStore_LogsAreWrittenOnFlush(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	s, err := jsonstore.New(dir)
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	p := s.Create("P", "")
+	for range 3 {
+		s.Add(&domain.RequestLog{ProjectID: p.ID, Method: "GET", Path: "/x"})
+	}
+
+	err = s.Flush()
+	if err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+
+	reopened, err := jsonstore.New(dir)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+
+	if got := len(reopened.ListLogs(p.ID, 10)); got != 3 {
+		t.Fatalf("expected 3 persisted logs after flush, got %d", got)
+	}
+}
