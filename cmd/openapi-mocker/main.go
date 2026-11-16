@@ -122,6 +122,7 @@ func runServer() {
 	serveErr := serveUntilSignal([]*http.Server{httpServer, a.grpc}, a.services.Logs, a.exporter)
 
 	stopLoadRuns(a.loadRuns)
+	flushStore(a.store)
 
 	if serveErr != nil {
 		log.Fatal(serveErr)
@@ -305,4 +306,12 @@ func newContractService(
 	return usecase.NewContractService(store, store, engine, gateway, validators).
 		WithChangeAlerts(engine, alertNotifier.Alerts()).
 		WithConverter(engine)
+}
+
+// flushStore writes request logs still waiting to be saved.
+func flushStore(store *jsonstore.Store) {
+	err := store.Flush()
+	if err != nil {
+		log.Printf("saving data: %v", err)
+	}
 }

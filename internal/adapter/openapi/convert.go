@@ -182,7 +182,8 @@ func swaggerToOpenAPI3(raw string) (string, error) {
 }
 
 func openapi3ToSwagger(raw string) (map[string]any, error) {
-	doc3, err := parse([]byte(raw))
+	// The document is changed below, so it must not be the shared one.
+	doc3, err := parseUncached([]byte(raw))
 	if err != nil {
 		return nil, err
 	}

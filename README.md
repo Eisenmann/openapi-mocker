@@ -48,6 +48,8 @@ docker run -p 8080:8080 -v mocker-data:/data ghcr.io/eisenmann/openapi-mocker:la
 
 More options (Compose, Kubernetes, the CI image):
 [Quick start](docs/quickstart.md) and [Deployment](docs/deployment.md).
+Start time, memory and throughput against WireMock, Prism and Mockoon CLI:
+[Benchmark](docs/benchmark.md).
 
 ## What is inside
 

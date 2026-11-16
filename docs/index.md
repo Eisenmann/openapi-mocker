@@ -33,7 +33,8 @@ docker run -p 8080:8080 -v mocker-data:/data ghcr.io/eisenmann/openapi-mocker:la
 
 See [Installation](installation.md) for Homebrew, Scoop, `go install`, release
 archives and Docker, and the [quick start](quickstart.md) for the desktop,
-Docker and CI options.
+Docker and CI options. For start time, memory and throughput against WireMock,
+Prism and Mockoon CLI, see the [benchmark](benchmark.md).
 
 ## What it does
 
