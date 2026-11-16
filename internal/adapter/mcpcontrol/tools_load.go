@@ -18,7 +18,8 @@ const (
 	// maxWaitSeconds bounds how long a call waits for a load run, so a tool
 	// call returns before an agent's own time limit.
 	maxWaitSeconds = 120
-	loadActor      = "mcp"
+	// loadActor is the actor recorded for changes made through MCP.
+	loadActor = "mcp"
 )
 
 var (
@@ -35,30 +36,30 @@ func (s *Server) loadTools() []*tool {
 				"violations. Give plan (YAML or JSON, target mock://<project id>) to run your own. Returns the run "+
 				"at once; with wait_seconds it waits for the result. Poll with get_load_run.", kindWrite,
 			object(props{
-				"project": projectProp(),
-				"plan":    text("A load plan in YAML or JSON. Leave out to generate one from the contract."),
-				"rate":    number("Generated plan: peak iterations per second (default 10)."),
-				"ramp":    text("Generated plan: time to reach the rate, for example 5s (default 5s)."),
-				"hold":    text("Generated plan: how long to keep the rate, for example 30s (default 30s)."),
+				keyProject: projectProp(),
+				"plan":     text("A load plan in YAML or JSON. Leave out to generate one from the contract."),
+				"rate":     number("Generated plan: peak iterations per second (default 10)."),
+				"ramp":     text("Generated plan: time to reach the rate, for example 5s (default 5s)."),
+				"hold":     text("Generated plan: how long to keep the rate, for example 30s (default 30s)."),
 				"include_unsafe": flag("Generated plan: also call POST, PUT, PATCH and DELETE operations, " +
 					"which change data."),
-				"wait_seconds": number("Wait up to this many seconds (at most 120) for the run to end."),
+				keyWaitSeconds: number("Wait up to this many seconds (at most 120) for the run to end."),
 			}), s.runLoadTest),
 		newTool("get_load_run", "Get a load run",
 			"Return a load run's state and, once it has ended, its verdict, threshold results and totals "+
 				"(requests, errors, throughput, latency percentiles). With wait_seconds it waits for the run to end.",
 			kindRead,
 			object(props{
-				"project":      projectProp(),
-				"run_id":       text("The run id from run_load_test."),
-				"wait_seconds": number("Wait up to this many seconds (at most 120) for the run to end."),
-			}, "run_id"), s.getLoadRun),
+				keyProject:     projectProp(),
+				keyRunID:       text("The run id from run_load_test."),
+				keyWaitSeconds: number("Wait up to this many seconds (at most 120) for the run to end."),
+			}, keyRunID), s.getLoadRun),
 		newTool("abort_load_run", "Abort a load run",
 			"Stop a running load test. The results measured so far are kept.", kindDestroy,
 			object(props{
-				"project": projectProp(),
-				"run_id":  text("The run id."),
-			}, "run_id"), s.abortLoadRun),
+				keyProject: projectProp(),
+				keyRunID:   text("The run id."),
+			}, keyRunID), s.abortLoadRun),
 	}
 }
 
@@ -227,7 +228,7 @@ func (s *Server) waitForRun(ctx context.Context, runID string, waitSeconds int) 
 
 func viewRun(run *domain.LoadRun) map[string]any {
 	out := map[string]any{
-		"run_id": run.ID, "project": run.ProjectID, "state": run.State, "target": run.Target,
+		keyRunID: run.ID, keyProject: run.ProjectID, "state": run.State, "target": run.Target,
 		"ended": run.FinishedAt != nil,
 	}
 

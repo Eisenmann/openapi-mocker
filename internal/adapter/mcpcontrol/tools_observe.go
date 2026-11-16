@@ -26,8 +26,8 @@ func (s *Server) observeTools() []*tool {
 			"List the calls the mock received, newest first, with the status it answered and what served it "+
 				"(a rule, the contract's example, request validation, an injected fault).", kindRead,
 			object(props{
-				"project": projectProp(),
-				"limit":   number("How many calls (default 20, at most 100)."),
+				keyProject: projectProp(),
+				"limit":    number("How many calls (default 20, at most 100)."),
 				"include_bodies": flag("Include the request and response bodies and headers " +
 					"(cut at 2000 characters; secret headers are redacted)."),
 			}), s.getLogs),
@@ -37,20 +37,20 @@ func (s *Server) observeTools() []*tool {
 				"passed, and when nothing matched it shows the closest calls and what differed. Without a count "+
 				"it asks for at least one call; exactly 0 means never.", kindRead,
 			object(props{
-				"project":       projectProp(),
-				"method":        text("HTTP method."),
-				"path":          text("Request path, for example /users/42. Segments written {name} or * match anything."),
+				keyProject:      projectProp(),
+				keyMethod:       text("HTTP method."),
+				keyPath:         text("Request path, for example /users/42. Segments written {name} or * match anything."),
 				"endpoint":      text("The contract operation that served the call, for example /users/{id}."),
-				"query":         stringMap("Query parameters that must be present with these values."),
-				"headers":       stringMap("Request headers that must be present with these values."),
+				keyQuery:        stringMap("Query parameters that must be present with these values."),
+				keyHeaders:      stringMap("Request headers that must be present with these values."),
 				"body_equals":   text("The request body must be exactly this text."),
 				"body_contains": text("The request body must contain this text."),
 				"body_regex":    text("The request body must match this Go regular expression."),
 				"body_json": map[string]any{
-					"description": "A JSON value the request body must contain: objects match when they hold at " +
+					keyDescription: "A JSON value the request body must contain: objects match when they hold at " +
 						"least these properties, arrays when they have the same length and each element matches.",
 				},
-				"status":       number("The status the mock answered with."),
+				keyStatus:      number("The status the mock answered with."),
 				"at_least":     number("At least this many matching calls."),
 				"at_most":      number("At most this many matching calls."),
 				"exactly":      number("Exactly this many matching calls (0 means never)."),
@@ -59,7 +59,7 @@ func (s *Server) observeTools() []*tool {
 			}), s.verifyCalls),
 		newTool("clear_calls", "Clear the recorded calls",
 			"Forget the calls recorded so far, so the next verification starts from an empty record.", kindDestroy,
-			object(props{"project": projectProp()}), s.clearCalls),
+			object(props{keyProject: projectProp()}), s.clearCalls),
 	}
 }
 
@@ -136,7 +136,7 @@ func (s *Server) getLogs(_ context.Context, a *getLogsArgs) (any, error) {
 		out = append(out, viewCall(c, a.IncludeBodies))
 	}
 
-	return map[string]any{"project": p.ID, "calls": out}, nil
+	return map[string]any{keyProject: p.ID, "calls": out}, nil
 }
 
 type verifyArgs struct {
@@ -248,5 +248,5 @@ func (s *Server) clearCalls(_ context.Context, a *projectArgs) (any, error) {
 		return nil, fmt.Errorf("clear the calls: %w", err)
 	}
 
-	return map[string]any{"project": p.ID, "cleared": n}, nil
+	return map[string]any{keyProject: p.ID, "cleared": n}, nil
 }

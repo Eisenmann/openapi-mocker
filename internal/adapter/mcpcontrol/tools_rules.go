@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Eisenmann/openapi-mocker/internal/domain"
 )
@@ -29,8 +30,8 @@ type faultArgs struct {
 
 func faultSchema() map[string]any {
 	return map[string]any{
-		"type": "object", "additionalProperties": false,
-		"description": "Fault injection. Each request rolls once: dropped connection, then timeout, then injected " +
+		keyType: typeObject, keyAdditionalProperties: false,
+		keyDescription: "Fault injection. Each request rolls once: dropped connection, then timeout, then injected " +
 			"error (the rule's fail_rate_pct), then malformed body; the rest is a normal response. The rates add up " +
 			"to at most 100.",
 		"properties": props{
@@ -107,48 +108,48 @@ func (s *Server) ruleTools() []*tool {
 	return []*tool{
 		newTool("list_mock_rules", "List mock rules",
 			"List a project's mock rules: the fixed responses that win over the contract's examples.", kindRead,
-			object(props{"project": projectProp()}), s.listRules),
+			object(props{keyProject: projectProp()}), s.listRules),
 		newTool("add_mock_rule", "Add a mock rule",
 			"Make the mock answer a method and path with a fixed response. The path may use {params} like the "+
 				"contract (/users/{id}). A rule with a scenario is used only when the request names it with the "+
 				"X-Mock-Scenario header; a rule with match conditions is used when they all hold. Delay and "+
 				"faults make the response slow or broken on purpose.", kindWrite,
 			object(props{
-				"project":      projectProp(),
-				"method":       text("HTTP method, for example GET."),
-				"path":         text("Path, for example /users/{id}."),
-				"status_code":  number("Response status (default 200)."),
+				keyProject:     projectProp(),
+				keyMethod:      text("HTTP method, for example GET."),
+				keyPath:        text("Path, for example /users/{id}."),
+				keyStatusCode:  number("Response status (default 200)."),
 				"body":         text("Response body. It may use {{placeholders}} for generated data."),
 				"content_type": text("Content type (default application/json when there is a body)."),
-				"headers":      stringMap("Response headers."),
-				"scenario":     text("Scenario name; leave out for the default."),
+				keyHeaders:     stringMap("Response headers."),
+				keyScenario:    text("Scenario name; leave out for the default."),
 				"match": map[string]any{
-					"type": "array", "description": "Request conditions that must all hold.",
+					keyType: "array", keyDescription: "Request conditions that must all hold.",
 					"items": object(props{
-						"source": choice("Where to look.", "body", "query", "header", "path"),
-						"name":   text("Parameter or header name, or the JSON path in the body (user.role)."),
+						keySource: choice("Where to look.", "body", keyQuery, "header", keyPath),
+						keyName:   text("Parameter or header name, or the JSON path in the body (user.role)."),
 						"op": choice("Comparison.", "equals", "not_equals", "contains", "regex", "exists",
 							"not_exists"),
 						"value": text("The value to compare with (not used by exists and not_exists)."),
-					}, "source", "name", "op"),
+					}, keySource, keyName, "op"),
 				},
-				"delay_ms":      number("Latency added to every response, in milliseconds."),
-				"fail_rate_pct": number("Percent of requests answered with an injected error instead."),
-				"fault":         faultSchema(),
-			}, "method", "path"), s.addRule),
+				keyDelayMs:     number("Latency added to every response, in milliseconds."),
+				keyFailRatePct: number("Percent of requests answered with an injected error instead."),
+				keyFault:       faultSchema(),
+			}, keyMethod, keyPath), s.addRule),
 		newTool("set_fault", "Set or clear faults on a rule",
 			"Change the latency and failures of an existing mock rule. Give fault to replace its fault settings, "+
 				"delay_ms and fail_rate_pct to change those, or clear to remove all of them.", kindWrite,
 			object(props{
-				"rule_id":       text("The rule id from list_mock_rules or add_mock_rule."),
-				"delay_ms":      number("Latency added to every response, in milliseconds."),
-				"fail_rate_pct": number("Percent of requests answered with an injected error."),
-				"fault":         faultSchema(),
-				"clear":         flag("Remove the delay, the error rate and the fault settings."),
-			}, "rule_id"), s.setFault),
+				keyRuleID:      text("The rule id from list_mock_rules or add_mock_rule."),
+				keyDelayMs:     number("Latency added to every response, in milliseconds."),
+				keyFailRatePct: number("Percent of requests answered with an injected error."),
+				keyFault:       faultSchema(),
+				"clear":        flag("Remove the delay, the error rate and the fault settings."),
+			}, keyRuleID), s.setFault),
 		newTool("delete_mock_rule", "Delete a mock rule",
 			"Delete a mock rule; the contract's examples answer again.", kindDestroy,
-			object(props{"rule_id": text("The rule id.")}, "rule_id"), s.deleteRule),
+			object(props{keyRuleID: text("The rule id.")}, keyRuleID), s.deleteRule),
 	}
 }
 
@@ -165,7 +166,7 @@ func (s *Server) listRules(_ context.Context, a *projectArgs) (any, error) {
 		out = append(out, viewRule(r))
 	}
 
-	return map[string]any{"project": p.ID, "rules": out}, nil
+	return map[string]any{keyProject: p.ID, "rules": out}, nil
 }
 
 type addRuleArgs struct {
@@ -185,10 +186,13 @@ type addRuleArgs struct {
 
 // rule builds the rule the arguments describe, with defaults filled in.
 func (a *addRuleArgs) rule(projectID string) *domain.MockRule {
-	rule := &domain.MockRule{ //nolint:exhaustruct // the optional fields stay unset.
-		ProjectID: projectID, Method: strings.ToUpper(strings.TrimSpace(a.Method)), Path: a.Path, Scenario: a.Scenario,
+	rule := &domain.MockRule{
+		ID: "", ProjectID: projectID, Method: strings.ToUpper(strings.TrimSpace(a.Method)), Path: a.Path,
+		Scenario:   a.Scenario,
 		StatusCode: a.StatusCode, ContentType: a.ContentType, Headers: a.Headers, Body: a.Body,
 		DelayMs: a.DelayMs, FailRatePct: a.FailRatePct,
+		Match: nil, Fault: nil, Stream: nil, WebSocket: nil, Raw: false, Recording: nil,
+		IsLLMGen: false, CreatedAt: time.Time{}, UpdatedAt: time.Time{},
 	}
 
 	if rule.StatusCode == 0 {

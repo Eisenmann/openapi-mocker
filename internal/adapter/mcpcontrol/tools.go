@@ -13,6 +13,38 @@ import (
 	"github.com/Eisenmann/openapi-mocker/internal/usecase"
 )
 
+// Keys and type names of the tool schemas and results.
+const (
+	jsonNull                = "null"
+	keyEndpoints            = "endpoints"
+	keyProject              = "project"
+	keyType                 = "type"
+	keyDescription          = "description"
+	keyName                 = "name"
+	keyContract             = "contract"
+	keyPath                 = "path"
+	keyMethod               = "method"
+	keyRunID                = "run_id"
+	keyRuleID               = "rule_id"
+	keyVersion              = "version"
+	keyValidation           = "validation"
+	keyWaitSeconds          = "wait_seconds"
+	keyText                 = "text"
+	keyStateful             = "stateful"
+	keyHeaders              = "headers"
+	keyFault                = "fault"
+	keyFailRatePct          = "fail_rate_pct"
+	keyDelayMs              = "delay_ms"
+	keyAdditionalProperties = "additionalProperties"
+	keyStatusCode           = "status_code"
+	keyStatus               = "status"
+	keySource               = "source"
+	keyScenario             = "scenario"
+	keyQuery                = "query"
+	typeString              = "string"
+	typeObject              = "object"
+)
+
 // OperationLister reads the operations of a contract, to generate load plans.
 type OperationLister interface {
 	LoadOperations(raw []byte) ([]usecase.LoadOperation, error)
@@ -104,7 +136,7 @@ func (s *Server) buildTools() []*tool {
 type props = map[string]any
 
 func object(properties props, required ...string) map[string]any {
-	out := map[string]any{"type": "object", "properties": properties, "additionalProperties": false}
+	out := map[string]any{keyType: typeObject, "properties": properties, keyAdditionalProperties: false}
 	if len(required) > 0 {
 		out["required"] = required
 	}
@@ -113,29 +145,29 @@ func object(properties props, required ...string) map[string]any {
 }
 
 func text(description string) map[string]any {
-	return map[string]any{"type": "string", "description": description}
+	return map[string]any{keyType: typeString, keyDescription: description}
 }
 
 func number(description string) map[string]any {
-	return map[string]any{"type": "integer", "description": description}
+	return map[string]any{keyType: "integer", keyDescription: description}
 }
 
 func flag(description string) map[string]any {
-	return map[string]any{"type": "boolean", "description": description}
+	return map[string]any{keyType: "boolean", keyDescription: description}
 }
 
 func choice(description string, values ...string) map[string]any {
-	return map[string]any{"type": "string", "description": description, "enum": values}
+	return map[string]any{keyType: typeString, keyDescription: description, "enum": values}
 }
 
 func stringMap(description string) map[string]any {
 	return map[string]any{
-		"type": "object", "description": description, "additionalProperties": map[string]any{"type": "string"},
+		keyType: typeObject, keyDescription: description, keyAdditionalProperties: map[string]any{keyType: typeString},
 	}
 }
 
 func numbers(description string) map[string]any {
-	return map[string]any{"type": "array", "description": description, "items": map[string]any{"type": "integer"}}
+	return map[string]any{keyType: "array", keyDescription: description, "items": map[string]any{keyType: "integer"}}
 }
 
 // projectProp is the argument that names a project, shared by most tools.

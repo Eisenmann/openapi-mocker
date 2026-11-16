@@ -22,23 +22,23 @@ func (s *Server) projectTools() []*tool {
 				"(YAML or JSON), GraphQL SDL, an MCP manifest (JSON) or a .proto file; a contract that does not "+
 				"validate is rejected and no project is created. Returns the mock_url to call.", kindWrite,
 			object(props{
-				"name":        text("Project name."),
-				"description": text("Short description."),
-				"contract":    text("The contract text. Leave out to create an empty project and import one later."),
-				"validation": choice("Check requests against the contract: off (default), warn (report in the log) "+
+				keyName:        text("Project name."),
+				keyDescription: text("Short description."),
+				keyContract:    text("The contract text. Leave out to create an empty project and import one later."),
+				keyValidation: choice("Check requests against the contract: off (default), warn (report in the log) "+
 					"or enforce (reject with HTTP 400).", "off", "warn", "enforce"),
-				"stateful": flag("Let POST, PUT, PATCH and DELETE change what later GETs return."),
-			}, "name"), s.createProject),
+				keyStateful: flag("Let POST, PUT, PATCH and DELETE change what later GETs return."),
+			}, keyName), s.createProject),
 		newTool("update_project", "Change project settings",
 			"Change a project's request validation mode or whether it keeps state.", kindWrite,
 			object(props{
-				"project":    projectProp(),
-				"validation": choice("off, warn or enforce.", "off", "warn", "enforce"),
-				"stateful":   flag("Keep state for POST, PUT, PATCH and DELETE (true) or not (false)."),
+				keyProject:    projectProp(),
+				keyValidation: choice("off, warn or enforce.", "off", "warn", "enforce"),
+				keyStateful:   flag("Keep state for POST, PUT, PATCH and DELETE (true) or not (false)."),
 			}), s.updateProject),
 		newTool("delete_project", "Delete a project",
 			"Delete a project with its contract versions, mock rules and request log. This cannot be undone.",
-			kindDestroy, object(props{"project": projectProp()}), s.deleteProject),
+			kindDestroy, object(props{keyProject: projectProp()}), s.deleteProject),
 	}
 }
 
@@ -97,9 +97,9 @@ func (s *Server) createProject(_ context.Context, a *createProjectArgs) (any, er
 		fresh = p
 	}
 
-	out := map[string]any{"project": s.view(fresh)}
+	out := map[string]any{keyProject: s.view(fresh)}
 	if eps := s.endpoints(p.ID); len(eps) > 0 {
-		out["endpoints"] = eps
+		out[keyEndpoints] = eps
 	}
 
 	return out, nil
@@ -108,7 +108,7 @@ func (s *Server) createProject(_ context.Context, a *createProjectArgs) (any, er
 // configure applies the optional parts of a new project.
 func (s *Server) configure(id, contract string, mode domain.ValidationMode, stateful bool) error {
 	if strings.TrimSpace(contract) != "" {
-		_, err := s.deps.Contracts.Publish(id, contract, "mcp")
+		_, err := s.deps.Contracts.Publish(id, contract, loadActor)
 		if err != nil {
 			return fmt.Errorf("publish the contract: %w", err)
 		}
@@ -177,7 +177,7 @@ func (s *Server) updateProject(_ context.Context, a *updateProjectArgs) (any, er
 		return nil, fmt.Errorf("read project: %w", err)
 	}
 
-	return map[string]any{"project": s.view(fresh)}, nil
+	return map[string]any{keyProject: s.view(fresh)}, nil
 }
 
 type projectArgs struct {
@@ -195,7 +195,7 @@ func (s *Server) deleteProject(_ context.Context, a *projectArgs) (any, error) {
 		return nil, fmt.Errorf("delete project: %w", err)
 	}
 
-	return map[string]any{"deleted": p.ID, "name": p.Name}, nil
+	return map[string]any{"deleted": p.ID, keyName: p.Name}, nil
 }
 
 // endpoints lists the operations of the project's contract. Contracts that are

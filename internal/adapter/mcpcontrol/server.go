@@ -98,12 +98,12 @@ func (s *Server) Handle(ctx context.Context, line []byte) []byte {
 	err := json.Unmarshal(line, &req)
 	if err != nil {
 		return encode(&rpcResponse{
-			JSONRPC: jsonRPC, ID: json.RawMessage("null"), Result: nil,
+			JSONRPC: jsonRPC, ID: json.RawMessage(jsonNull), Result: nil,
 			Error: &rpcError{Code: codeParse, Message: "parse error: " + err.Error()},
 		})
 	}
 
-	notification := len(req.ID) == 0 || string(req.ID) == "null"
+	notification := len(req.ID) == 0 || string(req.ID) == jsonNull
 
 	if req.JSONRPC != jsonRPC || req.Method == "" {
 		if notification {
@@ -160,7 +160,7 @@ func (s *Server) initialize(params json.RawMessage) any {
 	return map[string]any{
 		"protocolVersion": version,
 		"capabilities":    map[string]any{"tools": map[string]any{"listChanged": false}},
-		"serverInfo":      map[string]any{"name": serverName, "version": s.deps.Version},
+		"serverInfo":      map[string]any{keyName: serverName, keyVersion: s.deps.Version},
 		"instructions":    instructions,
 	}
 }
@@ -170,9 +170,9 @@ func (s *Server) list() any {
 
 	for _, t := range s.tools {
 		out = append(out, map[string]any{
-			"name":        t.name,
-			"description": t.description,
-			"inputSchema": t.schema,
+			keyName:        t.name,
+			keyDescription: t.description,
+			"inputSchema":  t.schema,
 			"annotations": map[string]any{
 				"title":           t.title,
 				"readOnlyHint":    t.readOnly,
@@ -203,7 +203,7 @@ func (s *Server) call(ctx context.Context, params json.RawMessage) (any, *rpcErr
 	}
 
 	args := p.Arguments
-	if len(args) == 0 || string(args) == "null" {
+	if len(args) == 0 || string(args) == jsonNull {
 		args = json.RawMessage("{}")
 	}
 
@@ -237,7 +237,7 @@ func toolResult(value any) map[string]any {
 	}
 
 	return map[string]any{
-		"content":           []map[string]any{{"type": "text", "text": string(text)}},
+		"content":           []map[string]any{{keyType: keyText, keyText: string(text)}},
 		"structuredContent": value,
 		"isError":           false,
 	}
@@ -247,7 +247,7 @@ func toolResult(value any) map[string]any {
 // and can fix the call, rather than as a protocol error.
 func toolError(message string) map[string]any {
 	return map[string]any{
-		"content": []map[string]any{{"type": "text", "text": message}},
+		"content": []map[string]any{{keyType: keyText, keyText: message}},
 		"isError": true,
 	}
 }

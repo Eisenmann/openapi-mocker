@@ -22,24 +22,24 @@ func (s *Server) contractTools() []*tool {
 	return []*tool{
 		newTool("validate_contract", "Validate a contract",
 			"Check a contract without saving it. Returns whether it is valid and what is wrong.", kindRead,
-			object(props{"contract": text("The contract text: OpenAPI, GraphQL SDL, MCP manifest or .proto.")}, "contract"),
+			object(props{keyContract: text("The contract text: OpenAPI, GraphQL SDL, MCP manifest or .proto.")}, keyContract),
 			s.validateContract),
 		newTool("import_contract", "Import a contract",
 			"Save a new version of a project's contract. The endpoints are served at once; the previous version "+
 				"stays in the history. An invalid contract is rejected.", kindWrite,
 			object(props{
-				"project":  projectProp(),
-				"contract": text("The contract text."),
-			}, "contract"), s.importContract),
+				keyProject:  projectProp(),
+				keyContract: text("The contract text."),
+			}, keyContract), s.importContract),
 		newTool("get_contract", "Get the contract",
 			"Return the project's contract text, the active version unless a version is given.", kindRead,
 			object(props{
-				"project": projectProp(),
-				"version": number("A version number; the active (latest) one when left out."),
+				keyProject: projectProp(),
+				keyVersion: number("A version number; the active (latest) one when left out."),
 			}), s.getContract),
 		newTool("list_endpoints", "List endpoints",
 			"List the REST operations of the project's contract: method, path and summary.", kindRead,
-			object(props{"project": projectProp()}), s.listEndpoints),
+			object(props{keyProject: projectProp()}), s.listEndpoints),
 	}
 }
 
@@ -100,14 +100,14 @@ func (s *Server) importContract(_ context.Context, a *importArgs) (any, error) {
 		return nil, err
 	}
 
-	c, err := s.deps.Contracts.Publish(p.ID, a.Contract, "mcp") //nolint:contextcheck // the service takes no context.
+	c, err := s.deps.Contracts.Publish(p.ID, a.Contract, loadActor) //nolint:contextcheck // the service takes no context.
 	if err != nil {
 		return nil, fmt.Errorf("import the contract: %w", err)
 	}
 
-	out := map[string]any{"project": p.ID, "version": c.Version, "mock_url": s.mockURL(p.ID)}
+	out := map[string]any{keyProject: p.ID, keyVersion: c.Version, "mock_url": s.mockURL(p.ID)}
 	if eps := s.endpoints(p.ID); len(eps) > 0 {
-		out["endpoints"] = eps
+		out[keyEndpoints] = eps
 	}
 
 	return out, nil
@@ -145,7 +145,7 @@ func (s *Server) getContract(_ context.Context, a *getContractArgs) (any, error)
 		raw, version = c.Raw, c.Version
 	}
 
-	return map[string]any{"project": p.ID, "version": version, "contract": raw}, nil
+	return map[string]any{keyProject: p.ID, keyVersion: version, keyContract: raw}, nil
 }
 
 func (s *Server) listEndpoints(_ context.Context, a *projectArgs) (any, error) {
@@ -159,5 +159,5 @@ func (s *Server) listEndpoints(_ context.Context, a *projectArgs) (any, error) {
 		return nil, fmt.Errorf("%w (%w)", errNoEndpoints, err)
 	}
 
-	return map[string]any{"project": p.ID, "mock_url": s.mockURL(p.ID), "endpoints": eps}, nil
+	return map[string]any{keyProject: p.ID, "mock_url": s.mockURL(p.ID), keyEndpoints: eps}, nil
 }
