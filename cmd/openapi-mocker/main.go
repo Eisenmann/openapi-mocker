@@ -18,6 +18,9 @@
 // "openapi-mocker load run|generate|validate" runs load tests from the command
 // line (see load.go).
 //
+// "openapi-mocker telemetry status|enable|disable|show" controls the opt-in
+// anonymous usage ping (see telemetry.go and docs/privacy.md).
+//
 // "openapi-mocker mcp-stdio MANIFEST.json" serves an MCP manifest over the
 // MCP stdio transport for editors and agents (see mcpstdio.go).
 //
@@ -58,6 +61,7 @@ import (
 	"github.com/Eisenmann/openapi-mocker/internal/adapter/router"
 	"github.com/Eisenmann/openapi-mocker/internal/agents"
 	"github.com/Eisenmann/openapi-mocker/internal/domain/ports"
+	"github.com/Eisenmann/openapi-mocker/internal/telemetry"
 	"github.com/Eisenmann/openapi-mocker/internal/usecase"
 )
 
@@ -92,13 +96,15 @@ func main() {
 // initVersion falls back to the module version of a "go install" build.
 var version = "dev"
 
-// runSubcommand runs the serve, healthcheck and version commands.
+// runSubcommand runs the serve, healthcheck, telemetry and version commands.
 func runSubcommand(name string, args []string) (code int, handled bool) {
 	switch name {
 	case "serve":
 		return runServe(args, os.Stderr), true
 	case "healthcheck":
 		return runHealthcheck(args, os.Stderr), true
+	case "telemetry":
+		return runTelemetry(args, os.Stdout, os.Stderr), true
 	case "version", "--version":
 		_, _ = fmt.Fprintln(os.Stdout, "openapi-mocker", version)
 		return exitOK, true
@@ -119,8 +125,14 @@ func runServer() {
 	httpServer := newHTTPServer(port, a.handler)
 	logStartup(port, dataDir)
 
+	pingCtx, stopPing := context.WithCancel(context.Background())
+
+	startTelemetry(pingCtx, telemetry.ModeServer, dataDir, func() []string { return storeProtocols(a.store) })
+	telemetryHint(os.Stderr, dataDir)
+
 	serveErr := serveUntilSignal([]*http.Server{httpServer, a.grpc}, a.services.Logs, a.exporter)
 
+	stopPing()
 	stopLoadRuns(a.loadRuns)
 	flushStore(a.store)
 

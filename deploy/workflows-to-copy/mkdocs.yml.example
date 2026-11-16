@@ -40,5 +40,7 @@ nav:
   - Reference:
       - REST API: rest-api.md
       - Known limitations: limitations.md
+  - Project:
+      - Privacy and the usage ping: privacy.md
   - Maintainers:
       - Releasing: releasing.md

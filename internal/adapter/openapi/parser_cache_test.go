@@ -18,12 +18,16 @@ paths:
 func TestParse_SameBytesShareOneDocument(t *testing.T) {
 	t.Parallel()
 
-	first, err := parse([]byte(cacheSpec))
+	// A cache of its own: the shared one is used by other parallel tests, which
+	// can push this contract out of it between the two calls.
+	cache := newDocCache(maxParsedDocs)
+
+	first, err := parseCached(cache, []byte(cacheSpec))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
 
-	second, err := parse([]byte(cacheSpec))
+	second, err := parseCached(cache, []byte(cacheSpec))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -32,7 +36,7 @@ func TestParse_SameBytesShareOneDocument(t *testing.T) {
 		t.Error("expected the same document for identical contract bytes")
 	}
 
-	changed, err := parse([]byte(cacheSpec + "  /b:\n    get:\n      responses:\n        \"200\": {description: ok}\n"))
+	changed, err := parseCached(cache, []byte(cacheSpec+"  /b:\n    get:\n      responses:\n        \"200\": {description: ok}\n"))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -45,8 +49,10 @@ func TestParse_SameBytesShareOneDocument(t *testing.T) {
 func TestParse_InvalidContractIsNotCached(t *testing.T) {
 	t.Parallel()
 
+	cache := newDocCache(maxParsedDocs)
+
 	for range 2 {
-		_, err := parse([]byte("openapi: [unclosed"))
+		_, err := parseCached(cache, []byte("openapi: [unclosed"))
 		if err == nil {
 			t.Fatal("expected an error for a broken contract")
 		}
@@ -56,7 +62,7 @@ func TestParse_InvalidContractIsNotCached(t *testing.T) {
 func TestParseUncached_ReturnsPrivateDocument(t *testing.T) {
 	t.Parallel()
 
-	shared, err := parse([]byte(cacheSpec))
+	shared, err := parseCached(newDocCache(maxParsedDocs), []byte(cacheSpec))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}

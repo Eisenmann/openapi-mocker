@@ -80,6 +80,12 @@ The full [REST API](docs/rest-api.md) is available for everything the UI does.
 Read the [known limitations](docs/limitations.md) before a production setup;
 in particular, the JSON-file store is meant for a single replica.
 
+## Privacy
+
+OpenAPI Mocker has an anonymous usage ping that is off unless you run
+`openapi-mocker telemetry enable`; see
+[Privacy and the usage ping](docs/privacy.md) for exactly what it sends.
+
 ## Configuration
 
 The server is configured with environment variables, for example `PORT`

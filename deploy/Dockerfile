@@ -9,7 +9,10 @@ RUN go mod download
 
 COPY . .
 ARG VERSION=dev
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w -X main.version=${VERSION}" \
+# The collector of the opt-in usage ping; empty means the image never sends one.
+ARG TELEMETRY_URL=
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-s -w -X main.version=${VERSION} -X main.telemetryEndpoint=${TELEMETRY_URL}" \
     -o /out/openapi-mocker ./cmd/openapi-mocker
 
 # ---- runtime stage ----
